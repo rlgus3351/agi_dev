@@ -1,138 +1,183 @@
-import os
-import cv2
-import time
-import torch
 from ultralytics import YOLO
+import cv2, os, torch, json
+from tqdm import tqdm
+from collections import deque
+import numpy as np
 
-# ==== 경로/모델 ====
-BASE_DIR = os.path.abspath("C://Users//user//Desktop//frameSecurity//data")
-FOLDER   = "250811"
-MODEL_PATH = os.path.join(BASE_DIR, "model.pt")
+# =====================[ 설정 ]=====================
+MODEL_PATH   = os.path.abspath("C://Users//user//Desktop//frameSecurity//data//model.pt")
+VIDEO_PATH   = os.path.abspath("C://Users//user//Desktop//frameSecurity//data//250811//input2.mp4")
+OUTPUT_VIDEO = os.path.abspath("C://Users//user//Desktop//frameSecurity//data//250811//yolo_blur2.mp4")
+OUTPUT_JSON  = os.path.abspath("C://Users//user//Desktop//frameSecurity//data//250811//yolo_blur_rois.json")
 
+# 로그/결과 저장 토글
+WRITE_FINAL_JSON = True       # 처리 후 프레임별 ROI 메타데이터 JSON 저장
+WRITE_NDJSON     = True       # 실시간 NDJSON 로그(파일 1개, append) 사용
+OUTPUT_NDJSON    = os.path.abspath("C://Users//user//Desktop//frameSecurity//data//250811//roi_stream.ndjson")
+
+# 라이브 tail UI
+TAIL_LINES = 10               # 라이브 창에 표시할 최근 로그 줄 수
+
+# 디렉터리 준비
+os.makedirs(os.path.dirname(OUTPUT_VIDEO), exist_ok=True)
+if WRITE_NDJSON:
+    open(OUTPUT_NDJSON, "w", encoding="utf-8").close()
+
+# =====================[ 모델 ]=====================
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"✅ Using device: {device}")
 model = YOLO(MODEL_PATH)
 model.to(device)
-if device == "cuda":
-    model.model.half()  # half precision (CUDA only)
+if device == 'cuda':
+    # half precision으로 속도/메모리 최적화 (지원되는 경우)
+    try:
+        model.model.half()
+    except Exception:
+        pass
 
-# ==== 파라미터 ====
-CONF_TH = 0.25
-DISPLAY_HEIGHT = 640   # 미리보기 윈도우 높이
-DEFAULT_SAVE = True    # 시작 시 저장 여부
-FOURCC = cv2.VideoWriter_fourcc(*'mp4v')
-MOSAIC_SIZE = 10
+# =====================[ 비디오 IO ]=====================
+cap = cv2.VideoCapture(VIDEO_PATH)
+if not cap.isOpened():
+    raise RuntimeError("Video 열기 실패")
 
-def mosaic_region(frame, x1, y1, x2, y2, block=MOSAIC_SIZE):
+fps    = int(cap.get(cv2.CAP_PROP_FPS)) or 30
+width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+out    = cv2.VideoWriter(OUTPUT_VIDEO, fourcc, fps, (width, height))
+if not out.isOpened():
+    raise RuntimeError("VideoWriter 초기화 실패")
+
+total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+
+# =====================[ 유틸 ]=====================
+def mosaic_region(frame, x1, y1, x2, y2, block=10):
+    h, w = frame.shape[:2]
     x1, y1 = max(0, x1), max(0, y1)
-    x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
+    x2, y2 = min(w, x2), min(h, y2)
     roi = frame[y1:y2, x1:x2]
     if roi.size == 0:
         return
-    small = cv2.resize(roi, (block, block), interpolation=cv2.INTER_LINEAR)
+    small  = cv2.resize(roi, (max(1, block), max(1, block)), interpolation=cv2.INTER_LINEAR)
     mosaic = cv2.resize(small, (x2 - x1, y2 - y1), interpolation=cv2.INTER_NEAREST)
     frame[y1:y2, x1:x2] = mosaic
 
-def process_and_preview(input_path, save=DEFAULT_SAVE):
-    cap = cv2.VideoCapture(input_path)
-    if not cap.isOpened():
-        print(f"❌ Cannot open: {input_path}")
+def append_ndjson_line(obj):
+    if not WRITE_NDJSON:
         return
+    with open(OUTPUT_NDJSON, "a", encoding="utf-8") as f:
+        f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = total_frames / fps if total_frames > 0 else 0
+# =====================[ 라이브 로그 tail 뷰 ]=====================
+tail_buf = deque(maxlen=TAIL_LINES)
+if WRITE_NDJSON:
+    ndjson_fp = open(OUTPUT_NDJSON, "r", encoding="utf-8")
 
-    output_path = os.path.splitext(input_path)[0] + "_blurred.mp4"
-    writer = cv2.VideoWriter(output_path, FOURCC, fps, (width, height)) if save else None
-
-    print(f"▶ {os.path.basename(input_path)} "
-          f"({width}x{height}@{fps:.2f}fps, {duration:.2f}s) | 저장: {save}")
-
-    paused = False
-    frame_idx = 0
-    t0 = time.time()
-
-    try:
+    def poll_ndjson_lines():
         while True:
-            if not paused:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                orig = frame.copy()
-
-                # YOLO 추론 (predict 대신 __call__)
-                with torch.no_grad():
-                    if device == "cuda":
-                        # half precision은 입력 변환 없이 자동 처리됨
-                        results = model(frame, conf=CONF_TH, verbose=False)
-                    else:
-                        results = model(frame, conf=CONF_TH, verbose=False)
-
-                # 결과 1장만 사용
-                r = results[0]
-                if r.boxes is not None and len(r.boxes) > 0:
-                    xyxy = r.boxes.xyxy  # (N,4)
-                    for b in xyxy:
-                        x1, y1, x2, y2 = map(int, b.tolist())
-                        mosaic_region(frame, x1, y1, x2, y2, block=MOSAIC_SIZE)
-
-                # 저장
-                if writer is not None:
-                    writer.write(frame)
-
-                # ======= 실시간 미리보기 (좌: 원본 | 우: 모자이크) =======
-                # 미리보기 해상도 축소
-                scale = DISPLAY_HEIGHT / height
-                disp_w = int(width * scale)
-                disp_h = DISPLAY_HEIGHT
-
-                left = cv2.resize(orig, (disp_w, disp_h))
-                right = cv2.resize(frame, (disp_w, disp_h))
-                combined = cv2.hconcat([left, right])
-
-                # 정보 오버레이
-                elapsed = time.time() - t0
-                cur_fps = (frame_idx + 1) / max(elapsed, 1e-6)
-                info = f"{os.path.basename(input_path)} | {frame_idx+1}/{total_frames} "\
-                       f"| {cur_fps:.1f} FPS | save:{'ON' if writer else 'OFF'}"
-                cv2.putText(combined, info, (12, 28),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
-
-                cv2.imshow("Before | After (q:종료, p:일시정지, s:저장 토글)", combined)
-                frame_idx += 1
-
-            # 키보드 제어
-            key = cv2.waitKey(1 if not paused else 50) & 0xFF
-            if key == ord('q'):
+            pos = ndjson_fp.tell()
+            line = ndjson_fp.readline()
+            if not line:
+                ndjson_fp.seek(pos)
                 break
-            elif key == ord('p'):
-                paused = not paused
-            elif key == ord('s'):
-                # 저장 토글
-                if writer is None:
-                    writer = cv2.VideoWriter(output_path, FOURCC, fps, (width, height))
-                    print("💾 저장 ON")
-                else:
-                    writer.release()
-                    writer = None
-                    print("🛑 저장 OFF")
+            tail_buf.append(line.rstrip("\n"))
 
-    except KeyboardInterrupt:
-        print("⏹ Interrupted.")
-    finally:
-        cap.release()
-        if writer is not None:
-            writer.release()
-        cv2.destroyAllWindows()
+    def draw_tail_window():
+        rows = max(TAIL_LINES, 6)
+        W, H = 900, 22*rows + 40
+        img = np.zeros((H, W, 3), dtype=np.uint8)
+        y = 28
+        cv2.putText(img, "ROI Stream (live) - last lines",
+                    (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 255, 200), 2, cv2.LINE_AA)
+        y += 22
+        for s in list(tail_buf)[-rows:]:
+            shown = (s[:120] + " ...") if len(s) > 120 else s
+            cv2.putText(img, shown, (12, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220, 220, 220), 1, cv2.LINE_AA)
+            y += 22
+        cv2.imshow("ROI Stream (live)", img)
+else:
+    def poll_ndjson_lines(): pass
+    def draw_tail_window(): pass
 
-def run_folder(folder_name):
-    folder_path = os.path.join(BASE_DIR, folder_name)
-    files = [f for f in os.listdir(folder_path) if f.lower().endswith((".mp4", ".avi"))]
-    for f in files:
-        process_and_preview(os.path.join(folder_path, f), save=DEFAULT_SAVE)
+# =====================[ 처리 루프 ]=====================
+roi_data = {}   # 최종 JSON 용(프레임별 ROI 메타데이터)
+roi_total = 0
 
-if __name__ == "__main__":
-    run_folder(FOLDER)
+for frame_idx in tqdm(range(total_frames or 10**9), desc="Processing video"):
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    orig = frame.copy()
+    # YOLO 추론
+    results = model.predict(
+        source=frame,
+        conf=0.25,
+        device=0 if device == 'cuda' else None,
+        half=(device == 'cuda'),
+        verbose=False
+    )
+
+    frame_rois = []
+    for r in results:
+        if r.boxes is None:
+            continue
+        for box in r.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            # ROI 메타만 기록(암호화/파일 저장 없음)
+            frame_rois.append({"bbox": [x1, y1, x2, y2]})
+            roi_total += 1
+
+            # 모자이크 적용
+            mosaic_region(frame, x1, y1, x2, y2, block=10)
+
+            # 실시간 NDJSON (가벼운 메타만)
+            append_ndjson_line({
+                "frame": frame_idx,
+                "bbox": [x1, y1, x2, y2]
+            })
+
+    # 프레임 메타 누적
+    if frame_rois:
+        roi_data[f"frame_{frame_idx:05d}"] = frame_rois
+
+    # Before | After 프리뷰
+    scale  = 640 / max(1, height)
+    disp_w, disp_h = int(width * scale), 640
+    left  = cv2.resize(orig,  (disp_w, disp_h))
+    right = cv2.resize(frame, (disp_w, disp_h))
+    combo = cv2.hconcat([left, right])
+    overlay = f"frame:{frame_idx+1}/{total_frames}  roi_total:{roi_total}"
+    cv2.putText(combo, overlay, (12, 28),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+    cv2.imshow("Before | After (q:exit)", combo)
+
+    # NDJSON 라이브 tail UI
+    poll_ndjson_lines()
+    draw_tail_window()
+
+    # 결과 비디오 저장
+    out.write(frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# =====================[ 마무리 ]=====================
+cap.release()
+out.release()
+if WRITE_NDJSON:
+    ndjson_fp.close()
+cv2.destroyAllWindows()
+
+if WRITE_FINAL_JSON:
+    with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
+        json.dump(roi_data, f, indent=2, ensure_ascii=False)
+
+print(f"✅ 완료! 모자이크 비디오: {OUTPUT_VIDEO}")
+if WRITE_FINAL_JSON:
+    print(f"✅ 최종 JSON: {OUTPUT_JSON}")
+if WRITE_NDJSON:
+    print(f"✅ NDJSON(라이브 로그): {OUTPUT_NDJSON}")

@@ -401,6 +401,43 @@ def delete_patient():
     player.close_handles()
     messagebox.showinfo("완료", "삭제되었습니다.")
 
+
+def _make_question_row(parent, item):
+    # 행 프레임(고정 높이)
+    row = tk.Frame(parent, height=ROW_HEIGHT)
+    row.pack(fill="x", pady=10, padx=18)
+    row.pack_propagate(False)
+
+    # 내부 grid (번호 / 항목명 / 입력칸)
+    row.grid_columnconfigure(0, weight=0)  # 번호
+    row.grid_columnconfigure(1, weight=1)  # 항목명
+    row.grid_columnconfigure(2, weight=0)  # 입력칸
+
+    tk.Label(row, text=f"{item['item_id']}번", width=6, anchor="w").grid(row=0, column=0, sticky="w")
+    tk.Label(row, text=item["item_name"], anchor="w").grid(row=0, column=1, sticky="w")
+
+    inputs = tk.Frame(row)
+    inputs.grid(row=0, column=2, sticky="e")
+
+    if not item["sides"]:
+        cell = tk.Frame(inputs)
+        cell.pack(side="right", padx=3)
+        tk.Label(cell, text="Score", fg="#555").pack(side="top")   # ← 라벨 추가
+        ent = _mk_score_entry(cell)
+        ent.pack(side="top")
+        question_entries[item["item_id"]] = ent
+    else:
+        side_entries = {}
+        for side in reversed(item["sides"]):
+            cell = tk.Frame(inputs)
+            cell.pack(side="right", padx=3)
+            tk.Label(cell, text=side, fg="#555").pack(side="top")
+            ent = _mk_score_entry(cell)
+            ent.pack(side="top")
+            side_entries[side] = ent
+        question_entries[item["item_id"]] = {s: side_entries[s] for s in item["sides"]}
+
+
 tk.Button(btns, text="환자 추가", command=add_patient).pack(side="left", padx=5)
 tk.Button(btns, text="환자 삭제", command=delete_patient).pack(side="left", padx=5)
 
@@ -435,6 +472,7 @@ input_row.grid_columnconfigure(0, weight=0)   # 약물
 input_row.grid_columnconfigure(1, weight=0)   # Dyskinesia + H&Y
 input_row.grid_columnconfigure(2, weight=1)   # 점수입력(확장)
 
+
 # ---- 약물(Medication) ----
 med_frame = tk.LabelFrame(input_row, text="약물(Medication)", padx=6, pady=6)
 med_frame.grid(row=0, column=0, sticky="n", padx=(0, 8))
@@ -460,7 +498,7 @@ med_minutes_entry = tk.Entry(levodopa_row, width=6); med_minutes_entry.pack(side
 
 # ---- Dyskinesia Impact + H&Y ----
 dysk_col = tk.Frame(input_row)
-dysk_col.grid(row=0, column=0, sticky="n", padx=(0, 8))
+dysk_col.grid(row=0, column=1, sticky="n", padx=(0, 8))
 
 dysk_frame = tk.LabelFrame(dysk_col, text="Dyskinesia Impact", padx=6, pady=6)
 dysk_frame.pack(fill="x")
@@ -505,40 +543,19 @@ def _mk_score_entry(parent, width=4):
     e.config(validate="key", validatecommand=(parent.register(_ok), "%P"))
     return e
 
-ROW_HEIGHT = 28  # 행 높이(px) - 원하면 조정 가능
+ROW_HEIGHT = 48  # 행 높이(px) - 원하면 조정 가능
 
-for item in ITEMS_DEF:  # ← 앞서 만든 항목 정의 리스트
-    row = tk.Frame(scores_inner, height=ROW_HEIGHT)
-    row.pack(fill="x", pady=4, padx=6)
-    row.pack_propagate(False)  # 행 높이 고정
+cols = tk.Frame(scores_inner)
+cols.pack(fill="both", expand=True)
 
-    # row 내부는 grid 사용 (3컬럼: 번호, 항목명, 입력영역)
-    row.grid_columnconfigure(0, weight=0)  # 번호
-    row.grid_columnconfigure(1, weight=1)  # 항목명(가변)
-    row.grid_columnconfigure(2, weight=0)  # 입력칸
+left_col  = tk.Frame(cols)
+right_col = tk.Frame(cols)
+left_col.pack(side="left", fill="both", expand=True)
+right_col.pack(side="left", fill="both", expand=True, padx=(8,0))
 
-    # 번호 / 항목명
-    tk.Label(row, text=f"{item['item_id']}번", width=6, anchor="w").grid(row=0, column=0, sticky="w")
-    tk.Label(row, text=item["item_name"], anchor="w").grid(row=0, column=1, sticky="w")
-
-    # 입력칸 컨테이너
-    inputs = tk.Frame(row)
-    inputs.grid(row=0, column=2, sticky="e")
-
-    if not item["sides"]:
-        ent = _mk_score_entry(inputs)
-        ent.pack(side="right")
-        question_entries[item["item_id"]] = ent
-    else:
-        side_entries = {}
-        for side in reversed(item["sides"]):
-            cell = tk.Frame(inputs)
-            cell.pack(side="right", padx=3)
-            tk.Label(cell, text=side, fg="#555").pack(side="top")
-            ent = _mk_score_entry(cell)
-            ent.pack(side="top")
-            side_entries[side] = ent
-        question_entries[item["item_id"]] = {s: side_entries[s] for s in item["sides"]}
+for item in ITEMS_DEF:
+    target = left_col if (item["item_id"] % 2 == 1) else right_col
+    _make_question_row(target, item)
 
 # ===== 설문 저장/초기화/삭제 =====
 def submit_survey():
