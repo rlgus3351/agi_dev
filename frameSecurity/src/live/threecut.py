@@ -271,7 +271,7 @@ for frame_idx in tqdm(range(total_frames or 10**9), desc="Processing video"):
         roi_data[f"frame_{frame_idx:05d}"] = frame_rois
 
     # ====== 3분할 뷰(원본 | 감지 | 모자이크) ======
-    target_h = 720
+    target_h = 1080
     scale  = target_h / max(1, height)
     disp_w = int(width * scale)
     disp_h = target_h

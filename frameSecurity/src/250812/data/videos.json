@@ -1,1 +1,18 @@
-{}
+{
+    "ef0131c7-bbdd-4a26-9da5-796f07ddc812": {
+        "1번영상": {
+            "temp_path": "C:/Users/user/Desktop/frameSecurity/data/250811/input2.mp4",
+            "final_path": "c:\\Users\\user\\Desktop\\frameSecurity\\src\\250812\\data\\videos\\ef0131c7-bbdd-4a26-9da5-796f07ddc812\\1번영상.mp4"
+        }
+    },
+    "8feb848f-4f29-49d4-ace8-f3cad136f192": {
+        "1번영상": {
+            "temp_path": "C:/Users/user/Desktop/frameSecurity/data/250811/input2.mp4",
+            "final_path": "c:\\Users\\user\\Desktop\\frameSecurity\\src\\250812\\data\\videos\\8feb848f-4f29-49d4-ace8-f3cad136f192\\1번영상.mp4"
+        },
+        "2번영상": {
+            "temp_path": "C:/Users/user/Desktop/frameSecurity/data/250811/yolo_blur2.mp4",
+            "final_path": "c:\\Users\\user\\Desktop\\frameSecurity\\src\\250812\\data\\videos\\8feb848f-4f29-49d4-ace8-f3cad136f192\\2번영상.mp4"
+        }
+    }
+}
