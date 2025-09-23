@@ -86,7 +86,7 @@ def open_madras(title="Madras"):
     modal.grab_set()
     modal.focus()
 
-    form = GenericSurveyForm(modal, json_file="C:/TeamGit/agi_dev/dataInputProgram/src/depression/form/madras.json")  # ✅ 프레임 embed
+    form = GenericSurveyForm(modal, json_file="C:/TeamGit/agi_dev/dataInputProgram/src/depression/form/anxiety_disorder.json")  # ✅ 프레임 embed
     form.pack(fill="both", expand=True, padx=20, pady=20)
 # 처음에는 버튼 3개 보이게
 show_survey_buttons()
