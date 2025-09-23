@@ -1,0 +1,261 @@
+{
+    "dataset": {
+        "id": "ds_001", 
+        "name": "Parkinson Motor Assessment Dataset", 
+        "src_path": "/data/raw/", 
+        "label_path": "/data/labels/"
+    },
+    "patients": [
+    {
+      "patient": [
+        {
+          "id": "P001", // 환자 고유 ID
+          "gender": "f", // 성별: 'm' 또는 'f' ,
+          "birthdate": "1965-03-15", // 생년월일
+          "hoehn_yahr_stage": 2.5, // 파킨슨병 진행 단계 (Hoehn & Yahr scale)
+       
+                }
+     
+            ],
+
+      "v_file": [
+
+        {
+          "name": "video_1.mp4",
+          "format": "mp4",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080
+       
+                },
+
+        {
+          "name": "video_2.mov",
+          "format": "mov",
+          "fps": 30,
+          "width": 1280,
+          "height": 720
+       
+                },
+
+        {
+          "name": "video_3.mp4",
+          "format": "mp4",
+          "fps": 30,
+          "width": 1280,
+          "height": 720
+       
+                },
+
+        {
+          "name": "video_4.mp4",
+          "format": "mp4",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080
+       
+                }
+
+     
+            ],
+
+      "mds_updrs_part3": {
+        "medication": {
+          "is_on_medication": true, // 증상 치료 목적의 약물 복용 여부
+          "clinical_effect": "positive", // 약물 복용 후 반응 (positive/negative)
+          "levodopa_taken": true, // Levodopa 복용 여부
+          "levodopa_elapsed_hours": 3.5, // 마지막 복용 후 경과 시간 (시간)
+       
+                },
+        "dyskinesia_impact": {
+          "dyskinesia_present": true, // 검사 중 Dyskinesia(무도병/근긴장이상) 있었는가?
+          "dyskinesia_interfered": true, // Dyskinesia가 검사 평가에 영향을 미쳤는가?
+       
+                },
+
+        "items": [
+          {
+            "item_id": 1,
+            "item_name": "말하기", // 각 항목 이름
+            "scores": 0 // 점수 (0~4), 부위별 점수인 경우는 dict 사용
+         
+                    },
+          {
+            "item_id": 2,
+            "item_name": "얼굴 표정",
+            "scores": 1
+         
+                    },
+
+          {
+
+            "item_id": 3,
+            "item_name": "관절의 뻣뻣함",
+            "scores": {
+              "Neck": 2, // 목
+              "RA": 1, // 오른쪽 팔
+              "LA": 3, //  왼쪽 팔
+              "RL": 1, // 오른쪽 다리
+              "LL": 0 // 왼쪽 다리
+           
+                        },
+         
+                    },
+
+          {
+
+            "item_id": 4,
+            "item_name": "손가락 부딪치기",
+            "scores": {
+              "R": 2,
+              "L": 1
+           
+                        },
+         
+                    },
+
+          {
+            "item_id": 5,
+            "item_name": "손 동작",
+            "scores": {
+              "R": 2,
+              "L": 1
+           
+                        },
+         
+                    },
+
+          {
+            "item_id": 6,
+            "item_name": "손 내전/외전 움직임",
+            "scores": {
+              "R": 2,
+              "L": 1
+           
+                        },
+         
+                    },
+
+          {
+            "item_id": 7,
+            "item_name": "발가락으로 두드리기",
+            "scores": {
+              "R": 2,
+              "L": 1
+           
+                        },
+         
+                    },
+
+          {
+            "item_id": 8,
+            "item_name": "다리 민첩성",
+            "scores": {
+              "R": 2,
+              "L": 1
+           
+                        },
+         
+                    },
+
+          {
+            "item_id": 9,
+            "item_name": "의자에서 일어나기",
+            "scores": 2,
+         
+                    },
+
+          {
+            "item_id": 10,
+            "item_name": "걷는 자세",
+            "scores": 3,
+         
+                    },
+
+          {
+            "item_id": 11,
+            "item_name": "걷는 중 몸의 굳어짐",
+            "scores": 2,
+         
+                    },
+
+          {
+            "item_id": 12,
+            "item_name": "자세의 안정",
+            "scores": 0,
+         
+                    },
+
+          {
+            "item_id": 13,
+            "item_name": "자세",
+            "scores": 4,
+         
+                    },
+
+          {
+            "item_id": 14,
+            "item_name": "움직임에서 전반적인 자연스러움",
+            "scores": 2,
+         
+                    },
+
+          {
+            "item_id": 15,
+            "item_name": "자세 유지시 손의 떨림",
+            "scores": {
+              "R": 2,
+              "L": 1
+           
+                        },
+         
+                    },
+
+          {
+            "item_id": 16,
+            "item_name": "움직일 때 손의 떨림",
+            "scores": {
+              "R": 2,
+              "L": 1
+           
+                        },
+
+         
+                    },
+
+          {
+
+            "item_id": 17,
+            "item_name": "가만 있을 때 떨림의 폭",
+            "scores": {
+              "RA": 1, // 오른쪽 팔
+              "LA": 2, //  왼쪽 팔
+              "RL": 3, // 오른쪽 다리
+              "LL": 1, // 왼쪽 다리
+              "LJ": 0 // 입술/턱
+           
+                        },
+
+         
+                    },
+
+          {
+
+            "item_id": 18,
+            "item_name": "가만 있을 때 떨림의 지속시간",
+            "scores": 4,
+         
+                    }
+
+       
+                ],
+
+     
+            }
+
+   
+        }
+
+ 
+    ]
+}

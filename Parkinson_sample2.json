@@ -1,0 +1,100 @@
+{
+
+  "dataset": {
+    "id": "ds_001",                                                                                 // 데이터셋 고유 ID
+    "name": "Parkinson Motor Assessment Dataset",                   // 데이터셋 이름
+    "src_path": "/data/raw/",                                                             // 원천 영상 파일 경로
+    "label_path": "/data/labels/",                                                      // 라벨링 데이터 저장 경로
+  },
+
+  "patients": [
+    {
+      "patient": [
+        {
+          "id": "P001",                                                                               // 환자 고유 ID
+          "gender": "f",                                                                             // 성별: 'm' 또는 'f' ,
+          "birthdate": "1965-03-15",                                                     // 생년월일
+          "hoehn_yahr_stage": 2.5,                                                        // 파킨슨병 진행 단계 (Hoehn & Yahr scale)
+        }
+      ],
+
+      "v_file": [
+
+        {
+          "name": "video_1.mp4",
+          "format": "mp4",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080
+        },
+
+        {
+          "name": "video_2.mov",
+          "format": "mov",
+          "fps": 30,
+          "width": 1280,
+          "height": 720
+        },
+
+        {
+          "name": "video_3.mp4",
+          "format": "mp4",
+          "fps": 30,
+          "width": 1280,
+          "height": 720
+        },
+
+        {
+          "name": "video_4.mp4",
+          "format": "mp4",
+          "fps": 30,
+          "width": 1920,
+          "height": 1080
+        }
+
+      ],
+
+      "mds_updrs_part3": {
+        "medication": {
+          "is_on_medication": true,                                                          // 증상 치료 목적의 약물 복용 여부
+          "clinical_effect": "positive",                                                      // 약물 복용 후 반응 (positive/negative)
+          "levodopa_taken": true,                                                           // Levodopa 복용 여부
+          "levodopa_elapsed_hours": 3.5,                                            // 마지막 복용 후 경과 시간 (시간)
+        },
+        "dyskinesia_impact": {
+          "dyskinesia_present": true,                                                    // 검사 중 Dyskinesia(무도병/근긴장이상) 있었는가?
+          "dyskinesia_interfered": true,                                                // Dyskinesia가 검사 평가에 영향을 미쳤는가?
+        },
+
+        "items": [
+
+              {
+                "1": 1,
+                "2": 1,
+                "3": [2, 1, 3, 1, 0],
+                "4": [1, 2],
+                "5": [1, 2],
+                "6": [1, 2],
+                "7": [1, 2],
+                "8": [1, 2],
+                "9": 1,
+                "10": 1,
+                "11": 1,
+                "12": 1,
+                "13": 1,
+                "14": 1,
+                "15": [1, 2],
+                "16": [1, 2],
+                "17": [2, 1, 3, 1, 0],
+                "18": 4
+              }
+
+            ]
+
+      }
+
+    }
+
+  ]
+
+}

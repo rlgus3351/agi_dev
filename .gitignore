@@ -1,0 +1,6 @@
+/dataInputProgram/Lib/
+/dataInputProgram/Scripts/*
+/dataInputProgram/Include/*
+
+/dataInputProgram/share/*
+/dataInputProgram/src/depression/__pycache__/

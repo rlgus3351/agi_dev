@@ -1,0 +1,86 @@
+{
+  "PHQ-9": {
+    "header": {
+      "title": "Montgomery–Åsberg",
+      "description": "우울증 평가 척도 (평가자용)",
+      "columns": [
+        "번호",
+        "문항",
+        "점수"
+      ]
+    },
+    "body": [
+      {
+        "id": 1,
+        "question": "말이나 얼굴표정, 자세에서 드러나는 절망감",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 2,
+        "question": "우울한 기분이 겉으로 드러나는지 여부와 관계없이 스스로 보고하는 우울한 기분",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 3,
+        "question": "표현하기 애매한 불편함, 신경이 날카로운 느낌, 마음속의 혼란, 심하면 공황,공포,심한 심적 고통에 이르는 정신적 긴장감.",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 4,
+        "question": "건강할 때의 정상적인 수면과 비교하여 수면시간이나 숙면의 정도가 감소된 경험.",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 5,
+        "question": "건강할 때와 비교하여 입맛을 잃었다는 느낌",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 6,
+        "question": "생각을 정리하기 어렵고 심하면 전혀 집중할 수 없음.",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 7,
+        "question": "어떤 일을 새로 시작하기 어렵거나, 일상적인 활동을 시작하거나 수행하는 것이 느려짐.",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 8,
+        "question": "죄책감,열등감,자책감,자신이 약하다는 생각, 후회와 파멸에 대한 생각",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 9,
+        "question": "죄책감, 열등감, 자책감, 자신이 약하다는 생각, 후회와 파멸에 대한 생각",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 10,
+        "question": "인생은 살만한 가치가 없다거나 차라리 죽었으면 좋겠다는 느낌.",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      }
+      
+    ]
+  }
+}
