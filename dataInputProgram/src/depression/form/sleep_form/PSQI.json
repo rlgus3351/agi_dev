@@ -1,0 +1,118 @@
+{
+  "피츠버그 수면질 척도": {
+    "sections": [
+      {
+        "header": {
+          "title": "피츠버그 수면질 척도 [PSQI]",
+          "description": "지난 한 달 동안 당신의 수면 습관에 관한 질문입니다."
+        },
+        "body": [
+          {
+            "id": 1,
+            "question": "보통 몇시에 잠자리에 듭니까? (예: 22:30 - 10시 30분은 22.5로 기록)",
+            "type": "input-number",
+            "min": 0,
+            "max": 23
+          },
+          {
+            "id": 2,
+            "question": "보통 잠 들 때까지 평균 얼마나 걸립니까? (예: 30분 소요 시 30분 기록)",
+            "type": "input-number",
+            "min": 0,
+            "max": 120
+          },
+          {
+            "id": 3,
+            "question": "보통 몇 시에 일어납니까? (예: 06:30 - 18시 30분은 6.5로 기록)",
+            "type": "input-number",
+            "min": 0,
+            "max": 23
+          },
+          {
+            "id": 4,
+            "question": "당신은 실제로 하루에 몇 시간 잡니까? (예: 7시간 30분은 7.5로 기록)",
+            "type": "input-number",
+            "min": 0,
+            "max": 24
+          }
+        ]
+      },
+      {
+        "header": {
+          "description": "지난 한달 동안 다음과 같은 이유로 잠을 잘 수 없었던 적이 얼마나 자주 있었습니까?",
+          "columns": [
+            "번호",
+            "문항",
+            "지난 한달\n동안 없음.",
+            "일주일에\n1일미만",
+            "일주일에\n1-2일",
+            "일주일에\n3일이상"
+          ]
+        },
+        "body": [
+          {
+            "id": "5-a",
+            "question": "밤에 30분 이내에 잠들지 못해서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-b",
+            "question": "중간에 깨거나 너무 일찍 깨서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-c",
+            "question": "화장실을 다녀오려고 일어나서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-d",
+            "question": "수면 중 숨을 쉬기가 불편해서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-e",
+            "question": "기침을 하거나 크게 코를 골아서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-f",
+            "question": "수면 중 너무 춥다고 느껴서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-g",
+            "question": "수면 중 너무 덥다고 느껴서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-h",
+            "question": "나쁜 꿈을 꿔서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-g",
+            "question": "통증이 있어서",
+            "type": "radio",
+            "options": [0, 1, 2, 3]
+          },
+          {
+            "id": "5-i",
+            "question": "위에 적혀진 이유 외에 잠을 못 잔 다른 이유 (예: 없으면 0, 기타 이유가 있으면 선택)",
+            "type": "radio",
+            "options": [0, 1, 2, 3],
+            "followup_input": true
+          }
+        ]
+      }
+    ]
+  }
+}

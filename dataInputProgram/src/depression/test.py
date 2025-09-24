@@ -8,10 +8,20 @@ class GenericSurveyForm(ctk.CTkFrame):
         with open(json_file, "r", encoding="utf-8") as f:
             self.survey_data = json.load(f)
 
-        self.vars = {}  # 문항별 값 저장
 
+        self.vars = {}  # 문항별 값 저장
+         # ✅ 스크롤 가능한 프레임 생성
+        scroll_frame = ctk.CTkScrollableFrame(self)
+        scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        # for survey_name, survey in self.survey_data.items():
+        #     self.build_table(survey.get("header"), survey.get("body"))
         for survey_name, survey in self.survey_data.items():
-            self.build_table(survey.get("header"), survey.get("body"))
+            sections = survey.get("sections")
+            if sections:
+                for section in sections:
+                    self.build_table(scroll_frame,section.get("header"), section.get("body"))
+            else:
+                self.build_table(scroll_frame,survey.get("header"), survey.get("body"))
 
         ctk.CTkButton(self, text="제출", command=self.calculate_score).pack(pady=10)
 
@@ -24,12 +34,12 @@ class GenericSurveyForm(ctk.CTkFrame):
         cols = ["번호", "문항"] + [f"선택{i+1}" for i in range(n_opts)]
         return cols
 
-    def build_table(self, header, body):
+    def build_table(self, parent, header, body):
         # ----- 1) 헤더(제목/설명) 카드 -----
         title = (header or {}).get("title", "")
         desc  = (header or {}).get("description", "")
 
-        header_card = ctk.CTkFrame(self)
+        header_card = ctk.CTkFrame(parent)
         header_card.pack(fill="x", padx=6, pady=(8, 4))
 
         if title:
@@ -40,7 +50,7 @@ class GenericSurveyForm(ctk.CTkFrame):
         # ----- 2) 테이블(표 헤더 + 본문)을 같은 grid 컨테이너에 -----
         columns = (header or {}).get("columns") or self._fallback_columns(body)
 
-        table = ctk.CTkFrame(self)
+        table = ctk.CTkFrame(parent)
         table.pack(fill="x", pady=5)
 
         # 열 비율: 번호(작게), 문항(넓게), 선택지(균등)
@@ -87,6 +97,13 @@ class GenericSurveyForm(ctk.CTkFrame):
                     ctk.CTkRadioButton(
                         table, text=str(opt), variable=var, value=str(opt)
                     ).grid(row=r, column=i+2, padx=5, pady=5, sticky="nsew")
+                 # ✅ 기타 이유 입력창이 필요한 경우
+                if item.get("followup_input"):
+                    input_var = ctk.StringVar()
+                    self.vars[f"{qid}_etc"] = input_var  # 등재 이름은 `_etc` 붙여 구분
+                    ctk.CTkEntry(table, textvariable=input_var, placeholder_text="기타 이유를 적어주세요").grid(
+                        row=r+1, column=1, columnspan=5, padx=10, pady=(0, 10), sticky="ew"
+                    )
             elif qtype == "input-number":
                 var = ctk.StringVar()
                 self.vars[qid] = var
@@ -107,49 +124,15 @@ class GenericSurveyForm(ctk.CTkFrame):
 
                 var.trace_add("write", validate_numeric_input)
 
-    # def calculate_score(self):
-    #     total = 0
-    #     for qid, var in self.vars.items():
-    #         try:
-    #             total += int(var.get())
-    #         except ValueError:
-    #             pass
-    #     print("총점:", total)
-    # def calculate_score(self):
-    #     total = 0
-    #     unanswered = []
 
-    #     for qid, var in self.vars.items():
-    #         value = var.get()
-    #         if value == "":
-    #             unanswered.append(qid)
-    #         else:
-    #             try:
-    #                 total += int(value)
-    #             except ValueError:
-    #                 pass
-
-    #     if unanswered:
-    #         CTkMessagebox(
-    #             title="입력 누락",
-    #             message="모든 항목을 입력해주세요.",
-    #             icon="warning",
-    #             option_1="확인"
-    #         )
-    #         return
-
-    #     print("총점:", total)
-    #     CTkMessagebox(
-    #         title="제출 완료",
-    #         message=f"총점은 {total}점입니다.",
-    #         icon="check",
-    #         option_1="확인"
-    #     )
-
+    
     def calculate_score(self):
         total = 0
         unanswered = []
+
         for qid, var in self.vars.items():
+            if "_etc" in str(qid):
+                continue 
             value = var.get()
             if value.strip() == "":
                 unanswered.append(qid)
@@ -158,7 +141,7 @@ class GenericSurveyForm(ctk.CTkFrame):
                 total += int(value)
             except ValueError:
                 unanswered.append(qid)
-    
+
         if unanswered:
             CTkMessagebox(
                 title="입력 누락",
@@ -167,11 +150,28 @@ class GenericSurveyForm(ctk.CTkFrame):
                 option_1="확인"
             )
             return
-    
-        print("총점:", total)
+
+        # 해석
+        interpretation = "해석 기준 없음"
+        for survey in self.survey_data.values():
+            scoring = survey.get("scoring")
+            if scoring:
+                interpretation = self.interpret_score(total, scoring)
+                break
+
         CTkMessagebox(
             title="제출 완료",
-            message=f"총점은 {total}점입니다.",
+            message=f"총점은 {total}점입니다.\n\n{interpretation}",
             icon="check",
             option_1="확인"
         )
+
+    @staticmethod
+    def interpret_score(score, scoring_rules: dict):
+        for rule, label in scoring_rules.items():
+            if "-" in rule:
+                min_val, max_val = map(int, rule.split("-"))
+                if min_val <= score <= max_val:
+                    return label
+        return "해석 기준 없음"
+

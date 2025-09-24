@@ -1,0 +1,61 @@
+{
+  "불면증 심각성 척도": {
+    "header": {
+      "title": "불면증 심각성 척도",
+      "description": "Insomnia Severity Index (ISI)",
+      "columns": [
+        "번호",
+        "문항",
+        "없다",
+        "약간\n정도",
+        "중간\n정도",
+        "심하다",
+        "매우 심하다"
+      ]
+    },
+    "body": [
+      {
+        "id": 1,
+        "question": "잠들기 어렵다.",
+         "type": "radio",
+        "options": [0, 1, 2, 3,4]
+      },
+      {
+        "id": 2,
+        "question": "잠을 유지하기 어렵다.",
+        "type": "radio",
+        "options": [0, 1, 2, 3,4]
+      },
+      {
+        "id": 3,
+        "question": "원하는 시간보다 일찍 깬다.",
+        "type": "radio",
+        "options": [0, 1, 2, 3,4]
+      },
+      {
+        "id": 4,
+        "question": "당신의 현재 수면 양상에 관하여\n얼마나 만족하고 있습니까?",
+        "type": "radio",
+        "options": [0, 1, 2, 3,4]
+      },
+      {
+        "id": 5,
+        "question": "당신이 생각하기에 당신의 수면 장애가\n어느 정도 당신의 낮 활동을 방해한다고 생각합니까?",
+        "type": "radio",
+        "options": [0, 1, 2, 3,4]
+      },
+      {
+        "id": 6,
+        "question": "수면장애로 인한 당신의 삶의 질의 \n손상 정도는 다른 사람들이 보기에 어떻다고 생각합니까?",
+        "type": "radio",
+        "options": [0, 1, 2, 3,4]
+      },
+      {
+        "id": 7,
+        "question": "당신은 현재 당신의 수면장애에 \n관하여 얼마나 걱정하고 있습니까?",
+        "type": "radio",
+        "options": [0, 1, 2, 3,4]
+      }
+    ]
+  }
+}

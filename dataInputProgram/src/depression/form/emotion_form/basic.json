@@ -1,0 +1,194 @@
+{
+  "기초 평가": {
+    "결혼 여부": {
+      "type": "radio",
+      "options": [
+        "독거",
+        "비독거"
+      ]
+    },
+    "교육년수": {
+      "type": "input-number",
+      "placeholder": "예) 18",
+      "min": 0,
+      "max": 90
+    },
+    "직업": {
+      "type": "radio",
+      "options": [
+        "학생",
+        {
+          "label": "직장인",
+          "sub": {
+            "교대근무 여부": {
+              "type": "radio",
+              "options": [
+                "예",
+                "아니오"
+              ]
+            }
+          }
+        },
+        {
+          "label": "기타",
+          "sub": {
+            "기타 항목 입력": {
+              "type": "input-text"
+            }
+          }
+        }
+      ]
+    },
+    "신장/몸무게": {
+      "type": "input-text",
+      "placeholder": "예) 180/75 (cm/kg)"
+    },
+    "카페인 음료 섭취": {
+      "type": "radio",
+      "options": [
+        {
+          "label": "마신다",
+          "sub": {
+            "섭취 여부": {
+              "type": "checkbox",
+              "options": [
+                "커피",
+                "녹차",
+                "홍차",
+                {
+                  "label": "기타",
+                  "sub": {
+                    "기타 음료 입력": {
+                      "type": "input-text"
+                    }
+                  }
+                }
+              ]
+            },
+            "월 섭취 횟수": {
+              "type": "input-number",
+              "min": 0,
+              "max": 100
+            }
+          }
+        },
+        "안 마신다"
+      ]
+    },
+    "음주에 대한 질문": {
+      "type": "radio",
+      "options": [
+        {
+          "label": "마신다",
+          "sub": {
+            "음주 종류": {
+              "type": "checkbox",
+              "options": [
+                "소주",
+                "맥주",
+                {
+                  "label": "기타",
+                  "sub": {
+                    "기타 주류 입력": {
+                      "type": "input-text"
+                    }
+                  }
+                }
+              ]
+            },
+            "월 섭취 횟수": {
+              "type": "input-number",
+              "min": 0,
+              "max": 100
+            }
+          }
+        },
+        "아니오"
+      ]
+    },
+    "흡연 여부": {
+      "type": "radio",
+      "options": [
+        {
+          "label": "예",
+          "sub": {
+            "하루 흡연량": {
+              "type": "input-text",
+              "placeholder": "예) 1갑, 0.5갑 등"
+            },
+            "흡연 기간": {
+              "type": "input-number",
+              "min": 0,
+              "max": 100
+            }
+          }
+        },
+        "아니오"
+      ]
+    },
+    "운동 여부": {
+      "type": "radio",
+      "options": [
+        {
+          "label": "예",
+          "sub": {
+            "운동 종류": {
+              "type": "checkbox",
+              "options": [
+                "걷기",
+                "달리기",
+                {
+                  "label": "기타",
+                  "sub": {
+                    "기타 운동 입력": {
+                      "type": "input-text"
+                    }
+                  }
+                }
+              ]
+            },
+            "주간 운동 횟수": {
+              "type": "input-number",
+              "min": 0,
+              "max": 7
+            },
+            "운동 시간": {
+              "type": "input-number",
+              "min": 0,
+              "max": 24
+            }
+          }
+        },
+        "아니오"
+      ]
+    },
+    "현병력": {
+      "type": "checkbox",
+      "options": [
+        "우울증",
+        "불면증",
+        {
+          "label": "기타",
+          "sub": {
+            "기타": {
+              "type": "input-text"
+            }
+          }
+        },
+         {
+          "label": "발병 시점",
+          "sub": {
+            "발병 년수": {
+              "type": "input-number",
+              "placeholder": "예) 년"
+            },
+            "발병 월수": {
+              "type": "input-number",
+              "placeholder": "예) 월"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

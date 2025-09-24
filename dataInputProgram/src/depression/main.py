@@ -70,29 +70,29 @@ def open_survey_modal(title):
 def open_phq9(title="PHQ-9"):
     modal = ctk.CTkToplevel(root)
     modal.title(title)
-    modal.geometry("900x600")
+    modal.geometry("1000x600")
     modal.transient(root)
     modal.grab_set()
     modal.focus()
 
-    form = GenericSurveyForm(modal, json_file="C:/TeamGit/agi_dev/dataInputProgram/src/depression/form/phq9.json")  # ✅ 프레임 embed
+    form = GenericSurveyForm(modal, json_file="C:/TeamGit/agi_dev/dataInputProgram/src/depression/form/MADRS.json")  # ✅ 프레임 embed
     form.pack(fill="both", expand=True, padx=20, pady=20)
 
 def open_madras(title="Madras"):
     modal = ctk.CTkToplevel(root)
     modal.title(title)
-    modal.geometry("900x600")
+    modal.geometry("1000x600")
     modal.transient(root)
     modal.grab_set()
     modal.focus()
 
-    form = GenericSurveyForm(modal, json_file="C:/TeamGit/agi_dev/dataInputProgram/src/depression/form/anxiety_disorder.json")  # ✅ 프레임 embed
+    form = GenericSurveyForm(modal, json_file="C:/TeamGit/agi_dev/dataInputProgram/src/depression/form/sleep_form/PSQI.json")  # ✅ 프레임 embed
     form.pack(fill="both", expand=True, padx=20, pady=20)
 # 처음에는 버튼 3개 보이게
 show_survey_buttons()
 
 # ---------------- [영상 / 파일 업로드] ----------------
-frame_video = ctk.CTkFrame(root)
+frame_video = ctk.CTkFrame(root)                                      
 frame_video.grid(row=1, column=1, sticky="nsew", padx=5, pady=5)
 
 lbl_video_title = ctk.CTkLabel(frame_video, text="파일 업로드", font=("", 16, "bold"))
