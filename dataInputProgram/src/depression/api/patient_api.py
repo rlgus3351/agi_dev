@@ -35,36 +35,33 @@ def load_patients(patient_listbox):
     except requests.RequestException as e:
         print(f"❌ 환자 목록 불러오기 실패: {e}")
 
+def fetch_patients():
+    """DB API에서 환자 목록 가져오기 (List[dict])"""
+    try:
+        response = requests.get(BASE_URL)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        print(f"❌ 환자 목록 불러오기 실패: {e}")
+        return []
 
-def add_patient(patient_data: dict, patient_listbox=None):
+
+def add_patient(patient_data: dict):
     try:
         res = requests.post(BASE_URL, json=patient_data)
         res.raise_for_status()
         messagebox.showinfo("성공", "환자 등록 완료!")
-
-        if patient_listbox is not None:
-            load_patients(patient_listbox)
-
         return res.json()
     except requests.RequestException as e:
         messagebox.showerror("에러", f"등록 실패: {e}")
         return None
 
-
-def delete_patient(patient_id: str, patient_listbox=None):
-    """
-    환자 삭제 API 호출
-    :param patient_id: 삭제할 환자 UUID
-    """
+def delete_patient(patient_id: str):
     try:
         url = f"{BASE_URL}{patient_id}"
         res = requests.delete(url)
         res.raise_for_status()
         messagebox.showinfo("성공", "환자 삭제 완료!")
-
-        if patient_listbox is not None:
-            load_patients(patient_listbox)
-
         return True
     except requests.RequestException as e:
         messagebox.showerror("에러", f"삭제 실패: {e}")
