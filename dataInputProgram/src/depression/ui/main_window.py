@@ -2,8 +2,15 @@ import customtkinter as ctk
 import tkinter as tk
 from form import HealthSurveyForm
 from test import GenericSurveyForm
-import requests
-from datetime import datetime
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from api.patient_api import load_patients, add_patient, delete_patient
+
+
+# ... CTk UI 생성 이후
+
+
 
 
 
@@ -26,11 +33,13 @@ frame_patient.grid(row=0, column=0, rowspan=2, sticky="ns", padx=5, pady=5)
 ctk.CTkLabel(frame_patient, text="환자 목록", font=("", 14, "normal")).pack(pady=5)
 patient_listbox = tk.Listbox(frame_patient, height=30, width=30)
 patient_listbox.pack(fill="y", expand=True)
+load_patients(patient_listbox)
 
 btn_frame = ctk.CTkFrame(frame_patient)
 btn_frame.pack(pady=5)
-ctk.CTkButton(btn_frame, text="환자 추가", font=("", 14, "normal")).pack(side="left", padx=5)
-ctk.CTkButton(btn_frame, text="환자 삭제", font=("", 14, "normal")).pack(side="left", padx=5)
+ctk.CTkButton(btn_frame, text="환자 추가", font=("", 14, "normal"),
+              command=lambda: open_add_patient()).pack(side="left", padx=5)
+ctk.CTkButton(btn_frame, text="환자 삭제", font=("", 14, "normal"),command=lambda:on_delete_patient()).pack(side="left", padx=5)
 
 # ---------------- [설문 내역] ----------------
 frame_survey = ctk.CTkFrame(root)
@@ -42,6 +51,60 @@ lbl_survey_title.pack(pady=10)
 # 설문 점수 요약 표시 프레임
 score_frame = ctk.CTkFrame(frame_survey)
 score_frame.pack(fill="x", pady=5)
+
+
+def open_add_patient():
+    modal = ctk.CTkToplevel(root)
+    modal.title("환자 추가")
+    modal.geometry("400x400")
+    modal.transient(root)
+    modal.grab_set()
+
+    initials_var = tk.StringVar()
+    birth_var = tk.StringVar()
+    institution_var = tk.StringVar()
+    gender_var = tk.StringVar(value="남성")  # 기본값
+
+    ctk.CTkLabel(modal, text="이니셜").pack(pady=5)
+    ctk.CTkEntry(modal, textvariable=initials_var).pack(pady=5)
+
+    ctk.CTkLabel(modal, text="생년월일 (YYYY-MM-DD)").pack(pady=5)
+    ctk.CTkEntry(modal, textvariable=birth_var).pack(pady=5)
+
+    ctk.CTkLabel(modal, text="성별").pack(pady=5)
+    gender_frame = ctk.CTkFrame(modal)
+    gender_frame.pack(pady=5)
+
+    ctk.CTkRadioButton(gender_frame, text="남성", variable=gender_var, value="f").pack(side="left", padx=5)
+    ctk.CTkRadioButton(gender_frame, text="여성", variable=gender_var, value="m").pack(side="left", padx=5)
+    ctk.CTkRadioButton(gender_frame, text="기타", variable=gender_var, value="기타").pack(side="left", padx=5)
+
+    def submit_patient():
+        payload = {
+            "patient_initials": initials_var.get(),
+            "birth_date": birth_var.get() or None,
+            "institution": "조선대학교 병원",
+            "gender": gender_var.get(),
+            "is_data_complete": False,
+            "completion_date": None
+        }
+        add_patient(payload, patient_listbox)  # api 함수 호출
+        modal.destroy()
+
+    ctk.CTkButton(modal, text="등록", command=submit_patient).pack(pady=20)
+
+def on_delete_patient():
+    selection = patient_listbox.curselection()
+    if not selection:
+        tk.messagebox.showwarning("경고", "삭제할 환자를 선택하세요.")
+        return
+
+    idx = selection[0]
+    patient_id = patient_listbox.patient_map.get(idx)
+
+    if patient_id:
+        delete_patient(patient_id, patient_listbox)
+
 
 # 예시: 점수 없으면 버튼 3개 표시
 def show_survey_buttons():

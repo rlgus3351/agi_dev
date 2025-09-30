@@ -1,0 +1,5 @@
+{
+    "python.analysis.extraPaths": [
+        "./dataInputProgram/src/depression/ui"
+    ]
+}

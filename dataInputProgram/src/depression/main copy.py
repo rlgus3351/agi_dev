@@ -2,8 +2,7 @@ import customtkinter as ctk
 import tkinter as tk
 from form import HealthSurveyForm
 from test import GenericSurveyForm
-import requests
-from datetime import datetime
+
 
 
 
