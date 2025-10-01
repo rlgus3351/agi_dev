@@ -31,13 +31,12 @@ def create_patient(patient: schemas.PatientCreate, db: Session = Depends(get_db)
 
 # 전체 환자 목록 (페이징 포함)
 @router.get("/", response_model=List[schemas.Patient])
-def read_patients(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_patients(db: Session = Depends(get_db)):
     query = text("""
         SELECT * FROM tb_patient_info
-        ORDER BY created_ts DESC
-        LIMIT :limit OFFSET :skip;
+        ORDER BY created_ts DESC;
     """)
-    result = db.execute(query, {"limit": limit, "skip": skip})
+    result = db.execute(query)
     return result.fetchall()
 
 # 특정 환자 조회
@@ -77,9 +76,26 @@ def update_patient(patient_id: UUID, patient: schemas.PatientUpdate, db: Session
 # 환자 삭제
 @router.delete("/{patient_id}")
 def delete_patient(patient_id: UUID, db: Session = Depends(get_db)):
-    query = text("DELETE FROM tb_patient_info WHERE patient_id = :patient_id RETURNING *;")
-    result = db.execute(query, {"patient_id": str(patient_id)}).fetchone()
-    if not result:
+    # 1) 환자 soft delete
+    query_patient = text("""
+        UPDATE tb_patient_info
+        SET is_deleted = TRUE, deleted_at = NOW(), update_ts = NOW()
+        WHERE patient_id = :patient_id
+        RETURNING patient_id
+    """)
+    patient_result = db.execute(query_patient, {"patient_id": str(patient_id)}).fetchone()
+
+    if not patient_result:
         raise HTTPException(status_code=404, detail="Patient not found")
+
+    # 2) 해당 환자의 items soft delete
+    query_items = text("""
+        UPDATE tb_items
+        SET is_deleted = TRUE, deleted_at = NOW()
+        WHERE patient_id = :patient_id
+    """)
+    db.execute(query_items, {"patient_id": str(patient_id)})
+
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "patient_id": str(patient_id)}
+

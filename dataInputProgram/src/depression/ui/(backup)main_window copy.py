@@ -12,9 +12,8 @@ from CTkMessagebox import CTkMessagebox
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api.patient_api import add_patient, delete_patient, fetch_patients  # ✅ import
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:50001"
 
-# ---------------- 서버 체크 ----------------
 def check_server_status():
     try:
         r = requests.get(f"{API_URL}/health", timeout=5)
@@ -26,37 +25,28 @@ def check_server_status():
                 return "DB_FAIL"
         else:
             return "API_FAIL"
-    except Exception:
+    except Exception as e:
         return "API_FAIL"
 
-
 def run_check():
-    """서버 상태 확인 후 메시지박스 표시"""
     status = check_server_status()
     if status == "OK":
         CTkMessagebox(title="확인", message="서버 연결 성공", icon="check")
-        return True
     elif status == "DB_FAIL":
         CTkMessagebox(title="오류", message="DB 연결 오류. 관리자에게 문의하세요.", icon="cancel")
     else:
         CTkMessagebox(title="오류", message="API 서버 연결 실패. 네트워크/방화벽 확인 필요", icon="cancel")
-    return False
 
 
-def init_program():
-    """프로그램 초기 실행 시 서버 확인 후 테이블 로드"""
-    if run_check():
-        load_patients_table()
-    else:
-        show_server_error()
 
 
-def show_server_error():
-    """서버 연결 실패 시 테이블 영역에 표시"""
-    for widget in table_frame.winfo_children():
-        widget.destroy()
-    ctk.CTkLabel(table_frame, text="서버와 연결할 수 없습니다.",
-                 font=("", 14, "italic"), text_color="red").pack(pady=20)
+
+
+
+
+
+
+
 
 # ---------------- [CTk 기본 설정] ----------------
 ctk.set_appearance_mode("light")
@@ -96,9 +86,13 @@ for i, (h, w) in enumerate(zip(headers, widths)):
 table_frame = ctk.CTkFrame(frame_patient)
 table_frame.pack(fill="both", expand=True)
 
+
 # ---------------- 선택 상태 ----------------
+
 def on_select_patient(patient, row_frame):
     global selected_patient, selected_row
+    print(selected_patient)
+    print(patient)
     # 이전 선택된 행 색상 원복
     if selected_row:
         selected_row.configure(fg_color="transparent")
@@ -111,18 +105,11 @@ def on_select_patient(patient, row_frame):
     show_selected_patient()
     show_survey_buttons()  # 버튼 활성화
 
-
 def load_patients_table():
-    """환자 목록 로드"""
     for widget in table_frame.winfo_children():
         widget.destroy()
 
-    try:
-        patients = fetch_patients()
-    except Exception as e:
-        show_server_error()
-        return
-
+    patients = fetch_patients()
     for r, patient in enumerate(patients):
         initials = patient.get("patient_initials") or "이니셜 없음"
         birth = patient.get("birth_date") or "생년월일 없음"
@@ -155,7 +142,7 @@ def load_patients_table():
         row_frame = ctk.CTkFrame(table_frame, fg_color=bg_color)
         row_frame.grid(row=r, column=0, columnspan=5, sticky="ew", pady=1)
 
-        # ✅ 행 전체 클릭 이벤트
+        # ✅ 행 전체 클릭 이벤트 (Label에는 이벤트 없음)
         row_frame.bind("<Button-1>", lambda e, p=patient, rf=row_frame: on_select_patient(p, rf))
 
         # 컬럼 표시
@@ -177,6 +164,9 @@ def load_patients_table():
             width=widths[4],
             command=make_delete_func(patient["patient_id"])
         ).grid(row=0, column=4, padx=5, pady=3)
+
+# 첫 로드
+load_patients_table()
 
 # 버튼 영역
 btn_frame = ctk.CTkFrame(frame_patient)
@@ -200,6 +190,7 @@ score_frame = ctk.CTkFrame(frame_survey)
 score_frame.pack(fill="x", pady=5)
 
 def show_selected_patient():
+    """오른쪽 상단에 선택된 환자 정보 표시"""
     if not selected_patient:
         selected_info_label.configure(text="환자를 선택해주세요.", font=("", 14, "italic"), text_color="gray")
     else:
@@ -234,7 +225,7 @@ def open_add_patient():
 
     initials_var = tk.StringVar()
     birth_var = tk.StringVar()
-    gender_var = tk.StringVar(value="남성")
+    gender_var = tk.StringVar(value="남성")  # 기본값
 
     ctk.CTkLabel(modal, text="이니셜").pack(pady=5)
     ctk.CTkEntry(modal, textvariable=initials_var).pack(pady=5)
@@ -322,5 +313,4 @@ ctk.CTkButton(upload_frame, text="영상 업로드", width=150).pack(side="left"
 ctk.CTkButton(upload_frame, text="기타 파일 업로드", width=150).pack(side="left", padx=10)
 
 # ---------------- 프로그램 시작 ----------------
-root.after(100, init_program)  # 실행 후 서버 상태 체크 + 테이블 로드
 root.mainloop()
