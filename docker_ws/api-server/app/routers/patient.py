@@ -39,6 +39,19 @@ def read_patients(db: Session = Depends(get_db)):
     result = db.execute(query)
     return result.fetchall()
 
+@router.get("/hospital", response_model=List[schemas.Patient])
+def read_patients_by_hospital(institution: str, db: Session = Depends(get_db)):
+    query = text("""
+        SELECT *
+        FROM tb_patient_info
+        WHERE institution = :institution
+        ORDER BY created_ts DESC
+    """)
+    result = db.execute(query, {"institution": institution}).fetchall()
+    if not result:
+        raise HTTPException(status_code=404, detail="No patients found for this institution")
+    return result
+
 # 특정 환자 조회
 @router.get("/{patient_id}", response_model=schemas.Patient)
 def read_patient(patient_id: UUID, db: Session = Depends(get_db)):
