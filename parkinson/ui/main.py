@@ -22,11 +22,16 @@ from api.item_api import fetch_items  # ✅ 꼭 추가!
 from utils.loader import run_with_loading,run_with_loading_popup  # 로딩 유틸 추가 import
 from api.health_api import check_server_status
 from config import HEALTH_URL, INSTITUTION  # config에서 가져옴
+from form.survey import HealthSurveyForm
 
 
+JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
+JSON_FILE = os.path.abspath(JSON_FILE)  # ← 절대경로로 변환 (안전)
 
 API_URL = "http://localhost:30000"
 INSTITUTION = "CNU"
+items_cache = {}  # 환자별 수집 항목 캐시
+
 
 # ---------------- 서버 체크 ----------------
 def check_server_status():
@@ -146,26 +151,35 @@ def handle_items_loaded(result):
 
     print(f"✅ 수집 항목 {len(result)}개 불러옴")
 
-    # 기존 위젯 제거
     for widget in score_frame.winfo_children():
         widget.destroy()
 
     if not result:
+        messagebox.showinfo("안내", "해당 환자는 아직 수집된 데이터가 없습니다.")
         ctk.CTkLabel(
             score_frame,
-            text="수집 항목이 없습니다.",
+            text="수집된 데이터가 없습니다.",
+            font=("", 13, "italic"),
             text_color="gray"
+        ).pack(pady=20)
+         # 설문지 입력 버튼
+        ctk.CTkButton(
+            score_frame,
+            text="📋 설문지 데이터 입력",
+            command=open_survey_input,  # 아래에 정의할 함수
+            fg_color="#4A90E2",
+            hover_color="#357ABD",
+            text_color="white"
         ).pack(pady=10)
         return
 
-    # 수집 항목 헤더
+    # 항목 있는 경우 출력
     ctk.CTkLabel(
         score_frame,
         text="📦 수집 항목 목록",
         font=ctk.CTkFont(size=14, weight="bold")
     ).pack(pady=(5, 0))
 
-    # 각 항목 출력
     for item in result:
         label_text = f"[{item['data_category']}] {item['data_type']} (순서: {item['seq']})"
         ctk.CTkLabel(
@@ -247,34 +261,37 @@ def open_upload_modal():
 def on_select_patient(patient, row_frame):
     global selected_patient, selected_row
 
-    # 이전 선택 환자 하이라이트 제거
+    # 기존 선택 해제
     if selected_row:
         selected_row.configure(fg_color="transparent")
 
-    # 현재 선택된 환자 하이라이트
+    # 새 선택 표시
     row_frame.configure(fg_color="#D0E8FF")
     selected_patient = patient
     selected_row = row_frame
-
-    # 상단 환자명 갱신
     show_selected_patient()
-    show_survey_buttons()
 
-    # ✅ 설문 수집 항목 로딩
-    run_with_loading_popup(
-        parent_frame=root,
-        fetch_function=lambda: fetch_items(patient["patient_id"]),
-        callback=handle_items_loaded,
-        loading_text="수집 항목을 불러오는 중입니다..."
-    )
+    pid = patient["patient_id"]
 
-    # ✅ 업로드 파일 목록 로딩
-    # run_with_loading_popup(
-    #     parent_frame=root,
-    #     fetch_function=lambda: fetch_files(patient["patient_id"]),
-    #     callback=handle_files_loaded,
-    #     loading_text="업로드 파일을 불러오는 중입니다..."
-    # )
+    # ✅ 항목이 이미 캐시에 있으면 바로 처리
+    if pid in items_cache:
+        handle_items_loaded(items_cache[pid])
+        return
+
+    # ✅ 스레드로 비동기 요청
+    def fetch_in_background():
+        try:
+            items = fetch_items(pid)
+        except Exception as e:
+            items = e  # 예외 전달
+        # UI 업데이트는 main thread에서
+        def update_ui():
+            if not isinstance(items, Exception):
+                items_cache[pid] = items
+            handle_items_loaded(items)
+        root.after(0, update_ui)
+
+    threading.Thread(target=fetch_in_background, daemon=True).start()
 
 
 def load_patients_table():
@@ -434,6 +451,25 @@ def open_add_patient():
         modal.destroy()
 
     ctk.CTkButton(modal, text="등록", command=submit_patient).pack(pady=20)
+
+def open_survey_input():
+    if not selected_patient:
+        messagebox.showwarning("환자 선택 필요", "먼저 환자를 선택해주세요.")
+        return
+
+    modal = ctk.CTkToplevel(root)
+    modal.title("운동성 설문지 입력")
+    modal.geometry("1000x850")
+    modal.grab_set()
+
+    # 상단 타이틀
+    initials = selected_patient.get("patient_initials", "?")
+    ctk.CTkLabel(modal, text=f"📝 운동성 설문지 입력 - {initials}", font=("", 16, "bold")).pack(pady=10)
+
+    # 설문 폼 불러오기
+    survey_form = HealthSurveyForm(modal, json_file=JSON_FILE)
+    survey_form.pack(fill="both", expand=True, padx=10, pady=10)
+
 
 frame_video = ctk.CTkFrame(root)
 frame_video.grid(row=1, column=1, sticky="nsew", padx=5, pady=5)

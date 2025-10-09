@@ -49,6 +49,12 @@
             "question": "검사 결과에 영향을 주었는지 여부",
             "type": "radio",
             "options": ["예", "아니오"]
+          },
+          {
+            "id": "e",
+            "question": "Hoehn & Yahr 파킨슨병 진행 단계",
+            "type": "radio",
+            "options": ["0", "1","1.5", "2", "2.5","3", "4", "5"]
           }
         ]
       },
