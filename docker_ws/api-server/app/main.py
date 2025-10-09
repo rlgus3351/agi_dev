@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import database
 import schemas  
-from routers import patient,item, health
+from routers import patient,item, health,meta
 from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(
@@ -17,11 +17,11 @@ Instrumentator().instrument(app).expose(app)
 example_schema = schemas.Patient
 example_create = schemas.PatientCreate
 example_schema = schemas.ItemCreate
-example_create = schemas.Item
+example_create = schemas.VideoMeta
+example_schema = schemas.VideoMetaCreate
 
 # 라우터 등록
 app.include_router(health.router)
 app.include_router(patient.router)
 app.include_router(item.router)
-
-# 2h51m20s
+app.include_router(meta.router)

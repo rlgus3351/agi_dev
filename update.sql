@@ -16,6 +16,7 @@ CREATE TABLE tb_patient_info (
 );
 
 
+COMMENT ON TABLE tb_patient_info IS '환자 정보 테이블';
 COMMENT ON COLUMN dev_kkh.tb_patient_info.patient_id IS '환자 고유 아이디';
 COMMENT ON COLUMN dev_kkh.tb_patient_info.display_id IS '외부 공개용 아이디';
 COMMENT ON COLUMN dev_kkh.tb_patient_info.patient_initials IS '환자 이니셜';
@@ -60,6 +61,7 @@ CREATE TABLE tb_Items (
     FOREIGN KEY (patient_id) REFERENCES tb_Patient_Info(patient_id)
 );
 
+COMMENT ON TABLE tb_items IS '수집 항목 데이터 테이블';
 -- 컬럼 설명 추가
 COMMENT ON COLUMN dev_kkh.tb_Items.item_id IS '각 수집 항목의 고유 식별자';
 COMMENT ON COLUMN dev_kkh.tb_Items.patient_id IS '외래 키: 환자 ID';
@@ -73,3 +75,42 @@ COMMENT ON COLUMN dev_kkh.tb_Items.deleted_at IS '소프트 삭제된 시각';
 
 -- 권한 부여
 GRANT DELETE, INSERT, UPDATE, SELECT ON TABLE dev_kkh.tb_items TO pd_dep_collector;
+
+
+CREATE TABLE tb_Data_Validation (
+    validation_id SERIAL PRIMARY KEY,     -- 검증 내역 고유 식별자 (기본 키)
+    item_id INT,                                      -- 외래 키: 어떤 항목에 대한 검증인지 연결
+    validation_method VARCHAR(50),                    -- 검증 방법
+    validation_description TEXT,                      -- 검증에 대한 상세 설명
+    validation_datetime TIMESTAMP,                     -- 검증이 이루어진 시점
+    FOREIGN KEY (item_id) REFERENCES tb_Items(item_id)
+);
+COMMENT ON TABLE tb_Data_Validation IS '데이터 검증 테이블';
+COMMENT ON COLUMN tb_Data_Validation.validation_id IS '검증 인덱스';
+COMMENT ON COLUMN tb_Data_Validation.item_id IS '외래 키 : 데이터 항목 식별자';
+COMMENT ON COLUMN tb_Data_Validation.validation_method IS '검증 방법';
+COMMENT ON COLUMN tb_Data_Validation.validation_description IS '검증에 대한 상세 설명';
+COMMENT ON COLUMN tb_Data_Validation.validation_datetime IS '검증 시점';
+
+
+CREATE TABLE tb_Video_Metadata (
+    video_metadata_id SERIAL PRIMARY KEY,
+    item_id INT,                                     -- 외래 키: 어떤 항목에 대한 영상인지 연결
+    file_path VARCHAR(255),                          -- 실제 영상 파일의 경로
+    file_size_mb DECIMAL(10, 2),                     -- 파일 크기 (MB)
+    duration_seconds INT,                            -- 영상 길이 (초)
+    resolution VARCHAR(20),                          -- 해상도 (예: '1920x1080')
+    frame_rate INT,                                  -- 프레임 레이트 (fps)
+    is_anonymized INT,                        -- 비식별화 여부 (0:N, 1:Y)
+    FOREIGN KEY (item_id) REFERENCES tb_Items(item_id)
+);
+GRANT DELETE, INSERT, UPDATE, SELECT ON TABLE dev_kkh.tb_Video_Metadata TO pd_dep_collector;
+COMMENT ON TABLE tb_Video_Metadata IS '비디오 메타데이터 테이블';
+COMMENT ON COLUMN tb_Video_Metadata.video_metadata_id IS '비디오 메타데이터 항목';
+COMMENT ON COLUMN tb_Video_Metadata.item_id IS '외래 키 : 데이터 항목 식별자';
+COMMENT ON COLUMN tb_Video_Metadata.file_path IS '파일 경로';
+COMMENT ON COLUMN tb_Video_Metadata.file_size_mb IS '파일 크기(mb단위)';
+COMMENT ON COLUMN tb_Video_Metadata.duration_seconds IS '영상 길이 (초)';
+COMMENT ON COLUMN tb_Video_Metadata.resolution IS '해상도 (예 : 1920*1080)';
+COMMENT ON COLUMN tb_Video_Metadata.frame_rate IS '프레임 레이트(fps)';
+COMMENT ON COLUMN tb_Video_Metadata.is_anonymized IS '비식별화 여부(0:N, 1:Y)';

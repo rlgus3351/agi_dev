@@ -68,3 +68,49 @@ class ItemUpdate(BaseModel):
     collected_at: Optional[datetime]
     is_deleted: Optional[bool]           # ✅ 필요 시 상태 업데이트 가능
     deleted_at: Optional[datetime]
+
+
+#  _   _  _____ ______  _____  _____ ___  ___ _____  _____   ___  
+# | | | ||_   _||  _  \|  ___||  _  ||  \/  ||  ___||_   _| / _ \ 
+# | | | |  | |  | | | || |__  | | | || .  . || |__    | |  / /_\ \
+# | | | |  | |  | | | ||  __| | | | || |\/| ||  __|   | |  |  _  |
+# \ \_/ / _| |_ | |/ / | |___ \ \_/ /| |  | || |___   | |  | | | |
+#  \___/  \___/ |___/  \____/  \___/ \_|  |_/\____/   \_/  \_| |_/
+                                                                
+                                                            
+# 비디오 항목 등록용
+class VideoMetaCreate(BaseModel):
+    item_id: Optional[int]               # 외래 키
+    file_path: Optional[str]             # 파일 경로
+    file_size_mb: Optional[float]        # 파일 크기 (MB 단위)
+    duration_seconds: Optional[int]     # 영상 길이 (초)
+    resolution: Optional[str]           # 해상도 (예: 1920x1080)
+    frame_rate: Optional[int]            # 프레임 레이트 (fps)
+    is_anonymized: Optional[int]         # 비식별화 여부 (0:N, 1:Y)
+
+
+# 수집 항목 조회용
+class VideoMeta(BaseModel):
+    video_metadata_id:Optional[int]
+    item_id: Optional[int]               # 외래 키
+    file_path: Optional[str]             # 파일 경로
+    file_size_mb: Optional[float]        # 파일 크기 (MB 단위)
+    duration_seconds: Optional[int]     # 영상 길이 (초)
+    resolution: Optional[str]           # 해상도 (예: 1920x1080)
+    frame_rate: Optional[int]            # 프레임 레이트 (fps)
+    is_anonymized: Optional[int]         # 비식별화 여부 (0:N, 1:Y)
+
+    class Config:
+        orm_mode = True
+# 여러 항목 등록용 DTO
+class VideoMetaCreate(BaseModel):
+    items: List[VideoMetaCreate]
+
+# 수집 항목 수정용
+class VideoMetaUpdate(BaseModel):
+    file_path: Optional[str]             # 파일 경로
+    file_size_mb: Optional[float]        # 파일 크기 (MB 단위)
+    duration_seconds: Optional[int]     # 영상 길이 (초)
+    resolution: Optional[str]           # 해상도 (예: 1920x1080)
+    frame_rate: Optional[int]            # 프레임 레이트 (fps)
+    is_anonymized: Optional[int]         # 비식별화 여부 (0:N, 1:Y)
