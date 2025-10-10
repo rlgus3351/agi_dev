@@ -115,7 +115,7 @@ ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("dark-blue")
 
 root = ctk.CTk()
-root.title("우울증 입력 프로그램")
+root.title("파킨슨병 입력 프로그램")
 root.geometry("1100x700")
 
 root.grid_rowconfigure(0, weight=1)
@@ -459,15 +459,26 @@ def open_survey_input():
 
     modal = ctk.CTkToplevel(root)
     modal.title("운동성 설문지 입력")
-    modal.geometry("1000x850")
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+# 화면의 70% 너비, 90% 높이로 설정
+    width = int(screen_width * 0.7)
+    height = int(screen_height * 0.9)
+
+    modal.geometry(f"{width}x{height}")
     modal.grab_set()
 
     # 상단 타이틀
+    patient_uuid = selected_patient["patient_id"]
     initials = selected_patient.get("patient_initials", "?")
+
     ctk.CTkLabel(modal, text=f"📝 운동성 설문지 입력 - {initials}", font=("", 16, "bold")).pack(pady=10)
 
     # 설문 폼 불러오기
-    survey_form = HealthSurveyForm(modal, json_file=JSON_FILE)
+    survey_form = HealthSurveyForm(modal, 
+                                   json_file=JSON_FILE, 
+                                   patient_id=patient_uuid) # ⬅️ UUID 전달
     survey_form.pack(fill="both", expand=True, padx=10, pady=10)
 
 

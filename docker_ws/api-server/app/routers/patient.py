@@ -92,7 +92,7 @@ def delete_patient(patient_id: UUID, db: Session = Depends(get_db)):
     # 1) 환자 soft delete
     query_patient = text("""
         UPDATE tb_patient_info
-        SET is_deleted = TRUE, deleted_at = NOW(), update_ts = NOW()
+        SET is_deleted = TRUE, deleted_ts = NOW(), update_ts = NOW()
         WHERE patient_id = :patient_id
         RETURNING patient_id
     """)

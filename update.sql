@@ -114,3 +114,49 @@ COMMENT ON COLUMN tb_Video_Metadata.duration_seconds IS '영상 길이 (초)';
 COMMENT ON COLUMN tb_Video_Metadata.resolution IS '해상도 (예 : 1920*1080)';
 COMMENT ON COLUMN tb_Video_Metadata.frame_rate IS '프레임 레이트(fps)';
 COMMENT ON COLUMN tb_Video_Metadata.is_anonymized IS '비식별화 여부(0:N, 1:Y)';
+
+
+CREATE TABLE tb_Questionnaire_Questions (
+    question_id SERIAL PRIMARY KEY,          -- 질문의 고유 식별자
+    questionnaire_type VARCHAR(50),                      -- 설문지 유형 (예: 우울증-A형, 우울증-B형)
+    question_number INT,                                 -- 설문지 내 질문 번호
+    question_text VARCHAR(500)                           -- 질문 내용
+);
+
+COMMENT ON TABLE tb_Questionnaire_Questions IS '설문지 질문 테이블';
+COMMENT ON COLUMN tb_Questionnaire_Questions.question_id IS '질문 ID';
+COMMENT ON COLUMN tb_Questionnaire_Questions.questionnaire_type IS '설문지 유형';
+COMMENT ON COLUMN tb_Questionnaire_Questions.question_number IS '질문 번호';
+COMMENT ON COLUMN tb_Questionnaire_Questions.question_text IS '질문 내용';
+
+GRANT DELETE, INSERT, UPDATE, SELECT ON TABLE dev_kkh.tb_Questionnaire_Questions TO pd_dep_collector;
+
+INSERT INTO tb_Questionnaire_Questions (questionnaire_type, question_number, question_text) VALUES
+-- 운동성 검사 기초 정보 (question_number는 JSON의 id 값 사용, 문자열 id는 0.x 형태로 변환)
+('운동성 검사 (MDS-UPDRS Part III)', 0, '증상 치료 목적 약물 복용 여부'),
+('운동성 검사 (MDS-UPDRS Part III)', 0, '환자 임상적 상태 (약물 복용 후)'),
+('운동성 검사 (MDS-UPDRS Part III)', 0, '환자 Levodopa 복용 여부'),
+('운동성 검사 (MDS-UPDRS Part III)', 0, '마지막 복용 경과 시간 (분)'),
+('운동성 검사 (MDS-UPDRS Part III)', 0, 'DYSKINESIA가 검사 결과에 영향을 주었는가?'),
+('운동성 검사 (MDS-UPDRS Part III)', 0, '검사 도중 dyskinesia 유무'),
+('운동성 검사 (MDS-UPDRS Part III)', 0, '검사 결과에 영향을 주었는지 여부'),
+('운동성 검사 (MDS-UPDRS Part III)', 0, 'Hoehn & Yahr 파킨슨병 진행 단계'), -- Hoehn & Yahr 척도
+-- 운동 항목별 평가 (question_number는 JSON의 id 값 사용)
+('운동성 검사 (MDS-UPDRS Part III)', 1, '말하기'),
+('운동성 검사 (MDS-UPDRS Part III)', 2, '얼굴 표정'),
+('운동성 검사 (MDS-UPDRS Part III)', 3, '관절의 뻣뻣함 (Neck, RA, LA, RL, LL)'), -- grouped-inputs는 항목명에 부위를 추가
+('운동성 검사 (MDS-UPDRS Part III)', 4, '손가락 부딪치기 (R, L)'),
+('운동성 검사 (MDS-UPDRS Part III)', 5, '손 동작 (R, L)'),
+('운동성 검사 (MDS-UPDRS Part III)', 6, '손 내전/외전 움직임 (R, L)'),
+('운동성 검사 (MDS-UPDRS Part III)', 7, '발가락으로 두드리기 (R, L)'),
+('운동성 검사 (MDS-UPDRS Part III)', 8, '다리 민첩성 (R, L)'),
+('운동성 검사 (MDS-UPDRS Part III)', 9, '의자에서 일어나기'),
+('운동성 검사 (MDS-UPDRS Part III)', 10, '걷는 자세'),
+('운동성 검사 (MDS-UPDRS Part III)', 11, '걷는 중 몸의 굳어짐'),
+('운동성 검사 (MDS-UPDRS Part III)', 12, '자세의 안정'),
+('운동성 검사 (MDS-UPDRS Part III)', 13, '자세'),
+('운동성 검사 (MDS-UPDRS Part III)', 14, '자연스러운 움직임'),
+('운동성 검사 (MDS-UPDRS Part III)', 15, '자세 유지시 손의 떨림 (R, L)'),
+('운동성 검사 (MDS-UPDRS Part III)', 16, '움직일 때 손의 떨림 (R, L)'),
+('운동성 검사 (MDS-UPDRS Part III)', 17, '가만 있을 때 떨림의 폭 (RA, LA, RL, LL, LJ)'),
+('운동성 검사 (MDS-UPDRS Part III)', 18, '가만 있을 때 떨림의 지속시간');
