@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import database
 import schemas  
-from routers import patient,item, health,meta
+from routers import patient,item, health,meta,form
 from prometheus_fastapi_instrumentator import Instrumentator
 
 app = FastAPI(
@@ -25,3 +25,4 @@ app.include_router(health.router)
 app.include_router(patient.router)
 app.include_router(item.router)
 app.include_router(meta.router)
+app.include_router(form.router)

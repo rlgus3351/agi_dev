@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional,List
 from datetime import date, datetime
 from uuid import UUID
+from typing import Union
 
 # ▶ 등록용
 class PatientCreate(BaseModel):
@@ -34,7 +35,6 @@ class PatientUpdate(BaseModel):
 
 # 수집 항목 등록용
 class ItemCreate(BaseModel):
-    patient_id: UUID = Field(..., example="46cd05ef-bc85-4a7f-8432-6827f706708b")
     data_category: Optional[str]
     data_type: Optional[str]
     seq: Optional[int]
@@ -119,7 +119,7 @@ class MDSFormCreate(BaseModel):
     # item_id: Optional[int] # 경로나 통합 제출에서 처리되므로 제거
     question_id: int # Optional이 아닌 필수 항목으로 변경
     answer_component: Optional[str] = None # grouped-inputs와 같은 세부 항목
-    answer_value: str # 응답 값
+    answer_value: Union[str,int] # 응답 값
 
 # 📋 MDS 설문 응답 조회 스키마 (응답으로 반환)
 class MDSForm(BaseModel):

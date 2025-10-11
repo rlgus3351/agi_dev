@@ -17,7 +17,7 @@ def fetch_items(patient_id: str):
         return res.json()  # List[dict]
     except requests.HTTPError as e:
         if res.status_code == 404:
-            messagebox.showwarning("알림", "해당 환자의 수집 항목이 없습니다.")
+            # messagebox.showwarning("알림", "해당 환자의 수집 항목이 없습니다.")
             return []
         else:
             messagebox.showerror("에러", f"수집 항목 조회 실패: {e}")
@@ -37,7 +37,7 @@ def fetch_files(patient_id: str):
         return res.json()  # List[dict]
     except requests.HTTPError as e:
         if res.status_code == 404:
-            messagebox.showwarning("알림", "해당 환자의 수집 항목이 없습니다.")
+            # messagebox.showwarning("알림", "해당 환자의 수집 항목이 없습니다.")
             return []
         else:
             messagebox.showerror("에러", f"수집 항목 조회 실패: {e}")
