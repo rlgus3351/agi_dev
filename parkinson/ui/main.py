@@ -1,36 +1,34 @@
-
 import customtkinter as ctk
 import tkinter as tk
 import sys
 import os
 from datetime import datetime
-from tkinter import messagebox,filedialog
+from tkinter import messagebox, filedialog
 import requests
 from CTkMessagebox import CTkMessagebox
 import threading
 import time
-
-
 
 # ✅ sys.path 수정
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 sys.path.append(PROJECT_ROOT)
 
-from api.patient_api import add_patient, delete_patient, fetch_patients  # ✅ import
-from api.item_api import fetch_items  # ✅ 꼭 추가!
-from utils.loader import run_with_loading,run_with_loading_popup  # 로딩 유틸 추가 import
+from api.patient_api import add_patient, delete_patient, fetch_patients
+from api.item_api import fetch_items 
+from utils.loader import run_with_loading, run_with_loading_popup
 from api.health_api import check_server_status
-from config import HEALTH_URL, INSTITUTION  # config에서 가져옴
+from api.form_api import fetch_mds_answers
+# from config import HEALTH_URL, INSTITUTION  # config에서 가져옴 (현재는 하드코딩 사용)
 from form.survey import HealthSurveyForm
 
 
 JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
-JSON_FILE = os.path.abspath(JSON_FILE)  # ← 절대경로로 변환 (안전)
+JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
 
 API_URL = "http://localhost:30000"
 INSTITUTION = "CNU"
-items_cache = {}  # 환자별 수집 항목 캐시
+items_cache = {} # 환자별 수집 항목 캐시
 
 
 # ---------------- 서버 체크 ----------------
@@ -47,40 +45,6 @@ def check_server_status():
             return "API_FAIL"
     except Exception:
         return "API_FAIL"
-
-def show_loading_popup(parent):
-    """로딩창 생성"""
-    popup = ctk.CTkToplevel(parent)
-    popup.title("서버 확인 중...")
-    popup.geometry("300x100")
-    popup.attributes("-topmost", True)  # 항상 위
-    popup.resizable(False, False)
-    ctk.CTkLabel(popup, text="서버 상태 확인 중...\n잠시만 기다려주세요.").pack(pady=20)
-    return popup
-
-def run_check(parent):
-    """서버 상태 확인 후 메시지박스 표시 (로딩 포함)"""
-    loading = show_loading_popup(parent)
-
-    def background_check():
-        time.sleep(3)  # 로딩 효과용 대기 시간
-        status = check_server_status()
-
-        def show_result():
-            loading.destroy()
-            if status == "OK":
-                CTkMessagebox(title="확인", message="서버 연결 성공", icon="check")
-                load_patients_table()
-            elif status == "DB_FAIL":
-                CTkMessagebox(title="오류", message="DB 연결 오류. 관리자에게 문의하세요.", icon="cancel")
-                show_server_error()
-            else:
-                CTkMessagebox(title="오류", message="API 서버 연결 실패. 네트워크/방화벽 확인 필요", icon="cancel")
-                show_server_error()
-
-        parent.after(0, show_result)
-
-    threading.Thread(target=background_check, daemon=True).start()
 
 def init_program():
     """프로그램 첫 실행 시 서버 상태 확인 (로딩 오버레이 포함)"""
@@ -144,72 +108,283 @@ for i, (h, w) in enumerate(zip(headers, widths)):
 table_frame = ctk.CTkFrame(frame_patient)
 table_frame.pack(fill="both", expand=True)
 
-def handle_items_loaded(result):
-    if isinstance(result, Exception):
-        messagebox.showerror("에러", f"수집 항목 로딩 실패:\n{result}")
-        return
 
-    print(f"✅ 수집 항목 {len(result)}개 불러옴")
+def format_mds_answers(raw_answers: list) -> list:
+    """
+    원시 MDS 답변 데이터를 generate_summary가 처리할 수 있는 구조로 변환합니다.
+    (question_id와 answer_value를 추출하고, 다중 답변을 통합합니다.)
+    """
+    grouped_answers = {}
+    
+    for ans in raw_answers:
+        q_id = ans['question_id']
+        answer_value = ans.get('answer_value', 'N/A')
+        answer_comp = ans.get('answer_component')
+        
+        # 1. 'question_id'를 키로 그룹화
+        if q_id not in grouped_answers:
+            grouped_answers[q_id] = {
+                'question_id': q_id,
+                'answers': []
+            }
+        
+        # 2. answer_component가 있으면 '컴포넌트:값' 형태로 저장
+        if answer_comp:
+            answer_str = f"{answer_comp}:{answer_value}"
+        else:
+            answer_str = answer_value
+            
+        grouped_answers[q_id]['answers'].append(answer_str)
+        
+    # 3. 최종 리스트로 변환 (answers 리스트를 하나의 문자열로 결합)
+    formatted_list = []
+    for q_id, data in grouped_answers.items():
+        formatted_list.append({
+            'question_id': q_id,
+            # 다중 답변은 "LA:1 | LL:1 | Neck:1" 같은 형태로 합칩니다.
+            'answer': " | ".join(data['answers']) 
+        })
+        
+    return formatted_list
 
+# ---------------- [새로운 요약 생성 함수] ----------------
+def generate_summary(item_data):
+    """항목 데이터에서 question_id 1번부터 8번까지의 답변을 추출하여 요약을 생성합니다."""
+    
+    # 💡 item_data는 fetch_items의 응답에서 온 항목 데이터라고 가정합니다.
+    # 설문 답변 데이터는 item_data['questions'] 리스트에 저장되어 있다고 가정합니다.
+    print(item_data)
+    questions = item_data.get('questions')
+    if not questions:
+        return "데이터 없음"
+    
+    summary_parts = []
+    # question_id가 1부터 8인 항목만 추출하여 답변을 요약합니다.
+    for q in questions:
+        try:
+            q_id = int(q.get('question_id', 0))
+            if 1 <= q_id <= 8:
+                answer = q.get('answer', 'N/A')
+                # 답변이 너무 길면 잘라내거나, 타입에 따라 포맷팅합니다.
+                if isinstance(answer, (int, float)):
+                    summary_parts.append(f"Q{q_id}:{answer}")
+                elif isinstance(answer, str) and len(answer) > 10:
+                    summary_parts.append(f"Q{q_id}:{answer[:10]}...")
+                else:
+                    summary_parts.append(f"Q{q_id}:{answer}")
+        except ValueError:
+            continue
+            
+    if not summary_parts:
+        return "첫 8개 질문 미응답"
+        
+    return " | ".join(summary_parts)
+
+
+# ---------------- 수집 항목 표시 로직 변경 (요약 및 버튼 분리) ----------------
+
+# '수정' 버튼 클릭 시 호출될 함수
+def open_survey_edit(item_data):
+    # '수정'은 기존 데이터가 있으므로 item_data (questions 포함)를 전달합니다.
+    open_survey_form(item_data) 
+
+
+def open_survey_input(item_data):
+    # '입력'은 데이터가 없으므로 item_data (항목 기본 정보만)를 전달합니다.
+    open_survey_form(item_data)
+    
+    
+def show_survey_items(survey_items):
+    """score_frame에 설문 항목 목록을 표시합니다. 데이터 유무와 요약을 표시합니다."""
+    
+    # 1. 항목 표시 영역 초기화
     for widget in score_frame.winfo_children():
         widget.destroy()
 
-    if not result:
-        messagebox.showinfo("안내", "해당 환자는 아직 수집된 데이터가 없습니다.")
+    if not selected_patient:
+        ctk.CTkLabel(score_frame, text="환자를 선택해주세요.", font=("", 14, "italic"), text_color="gray").pack(pady=20)
+        return
+
+    if not survey_items:
         ctk.CTkLabel(
             score_frame,
-            text="수집된 데이터가 없습니다.",
+            text="수집된 설문 데이터가 없습니다.",
             font=("", 13, "italic"),
             text_color="gray"
         ).pack(pady=20)
-         # 설문지 입력 버튼
+        new_item_data = {
+            'data_category': 'PD', 
+            'data_type': 'MDS-UPDRS Part 3', # 초기 입력 시 사용할 설문 유형
+            'seq': 1 # 최초 항목이므로 1로 지정 (저장 시 백엔드에서 시퀀스 부여/업데이트가 필요할 수 있음)
+        }
+        
         ctk.CTkButton(
             score_frame,
-            text="📋 설문지 데이터 입력",
-            command=open_survey_input,  # 아래에 정의할 함수
-            fg_color="#4A90E2",
-            hover_color="#357ABD",
-            text_color="white"
-        ).pack(pady=10)
-        return
+            text="➕ 새 설문 항목 등록 및 입력",
+            command=lambda data=new_item_data: open_survey_form(data),
+            fg_color="#007BFF",
+            hover_color="#0056b3"
+        ).pack(pady=(5, 20))
 
-    # 항목 있는 경우 출력
-    ctk.CTkLabel(
-        score_frame,
-        text="📦 수집 항목 목록",
-        font=ctk.CTkFont(size=14, weight="bold")
-    ).pack(pady=(5, 0))
-
-    for item in result:
-        label_text = f"[{item['data_category']}] {item['data_type']} (순서: {item['seq']})"
+        return # 항목이 없으므로 여기서 함수 종료
+    else:
         ctk.CTkLabel(
             score_frame,
-            text=label_text,
-            anchor="w",
-            justify="left"
-        ).pack(fill="x", padx=10, pady=2)
+            text="📋 설문 항목 목록",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(5, 0))
+
+        list_container = ctk.CTkFrame(score_frame, fg_color="transparent")
+        list_container.pack(fill="x", padx=10, pady=5)
+
+        for item in survey_items:
+            # 설문 데이터 유무 판단: item['questions'] 리스트에 값이 있으면 데이터가 있다고 판단
+            # 💡 이 로직은 백엔드 API의 응답 구조에 따라 정확하게 맞춰야 합니다.
+            has_data = bool(item.get('questions'))
+            
+            row_frame = ctk.CTkFrame(list_container, fg_color="transparent")
+            row_frame.pack(fill="x", pady=5)
+            row_frame.grid_columnconfigure(0, weight=1) # 항목/요약 영역 확장
+            row_frame.grid_columnconfigure(1, weight=0) # 버튼 영역 고정
+
+            # 1. 항목 이름 및 요약 표시 영역
+            item_summary_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+            item_summary_frame.grid(row=0, column=0, sticky="ew", padx=(5, 10))
+            
+            # 항목 이름
+            item_name = f"[{item['data_category']}] {item['data_type']}"
+            ctk.CTkLabel(
+                item_summary_frame,
+                text=item_name,
+                anchor="w",
+                justify="left",
+                font=ctk.CTkFont(size=13, weight="bold" if has_data else "normal")
+            ).pack(fill="x", anchor="w")
+            
+            print(item)
+            # 요약 정보
+            summary_text = generate_summary(item) if has_data else "미입력 상태"
+            ctk.CTkLabel(
+                item_summary_frame,
+                text=f"요약: {summary_text}",
+                anchor="w",
+                justify="left",
+                font=ctk.CTkFont(size=11, slant="italic"),
+                text_color="gray"
+            ).pack(fill="x", anchor="w")
+
+            # 2. 버튼 영역
+            if has_data:
+                button_text = "수정"
+                button_command = lambda data=item: open_survey_form(data)
+                button_color = "#357ABD" # 파란색 (수정)
+            else:
+                button_text = "입력"
+                button_command = lambda data=item: open_survey_form(data) # 새 입력
+                button_color = "#4CAF50" # 녹색 (입력)
+                
+            ctk.CTkButton(
+                row_frame,
+                text=button_text,
+                command=button_command,
+                fg_color=button_color,
+                hover_color=button_color,
+                width=60,
+                height=40 # 버튼 높이를 조금 키워 보기 좋게 조정
+            ).grid(row=0, column=1, padx=5, pady=5)
 
 
-def handle_files_loaded(result):
-    for widget in upload_frame.winfo_children():
+def open_survey_form(item_data=None):
+    """
+    설문지 입력/수정 모달을 엽니다. 모든 설문 관련 동작을 이 함수로 통합합니다.
+    """
+    if not selected_patient:
+        messagebox.showwarning("환자 선택 필요", "먼저 환자를 선택해주세요.")
+        return
+
+    # 모달 설정
+    modal = ctk.CTkToplevel(root)
+    
+    # item_data가 비어있지 않고, 'questions' 필드가 있으면 '수정' 모드
+    is_edit_mode = bool(item_data and item_data.get('questions'))
+    
+    # ----------------------------------------------------
+    # ✅ [수정] initial_data 변수를 계산하여 NameError를 방지합니다.
+    initial_form_data = [] # 변수를 초기화하여 NameError 방지
+    
+    if is_edit_mode:
+        # 수정 모드: 원시 데이터 ('questions_raw')를 우선 사용하여 폼을 초기화
+        initial_form_data = item_data.get('questions_raw', []) 
+        
+        # 안전 장치: 'questions_raw'가 비어있다면, 요약용 데이터라도 시도
+        if not initial_form_data:
+            initial_form_data = item_data.get('questions', [])
+            
+        if not initial_form_data:
+             messagebox.showerror("오류", "수정할 상세 설문 데이터가 누락되었습니다.")
+             modal.destroy()
+             return
+    # ----------------------------------------------------
+    
+    modal.title(f"운동성 설문지 {'수정' if is_edit_mode else '입력'}")
+    
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    width = int(screen_width * 0.7)
+    height = int(screen_height * 0.9)
+
+    modal.geometry(f"{width}x{height}")
+    modal.grab_set()
+
+    # 상단 타이틀
+    patient_uuid = selected_patient["patient_id"]
+    initials = selected_patient.get("patient_initials", "?")
+    item_type = item_data.get('data_type', 'N/A') if item_data else 'N/A'
+
+    ctk.CTkLabel(modal, text=f"📝 운동성 설문지 - {initials} ({item_type})", font=("", 16, "bold")).pack(pady=10)
+
+    # 설문 폼 불러오기
+    survey_form = HealthSurveyForm(
+        modal, 
+        json_file=JSON_FILE, 
+        patient_id=patient_uuid,
+        # ✅ 계산된 변수를 전달
+        initial_data=initial_form_data 
+    ) 
+    survey_form.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    # 모달 닫기 시 캐시를 지우고 목록을 새로고침
+    def on_modal_close():
+        pid = selected_patient["patient_id"]
+        if pid in items_cache:
+            del items_cache[pid]
+        
+        modal.destroy()
+        
+    modal.protocol("WM_DELETE_WINDOW", on_modal_close)
+
+
+def show_file_items(file_items):
+    """upload_frame에 파일 항목 목록을 표시합니다."""
+    # upload_list_frame만 비우고 버튼은 유지
+    for widget in upload_list_frame.winfo_children():
         widget.destroy()
 
-    if isinstance(result, Exception):
-        ctk.CTkLabel(upload_frame, text="파일 불러오기 실패", text_color="red").pack(pady=10)
-        return
+    if not file_items:
+        ctk.CTkLabel(upload_list_frame, text="업로드된 파일 항목이 없습니다.", text_color="gray").pack(pady=10)
+    else:
+        ctk.CTkLabel(upload_list_frame, text="🎥 파일 항목 목록", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(5, 0))
+        
+        # 파일 목록 표시
+        for idx, item in enumerate(file_items):
+            label_text = f"[{item['data_category']}] {item['data_type']} (순서: {item['seq']})"
+            ctk.CTkLabel(upload_list_frame, text=label_text, anchor="w").pack(fill="x", padx=10, pady=2)
 
-    if not result:
-        ctk.CTkLabel(upload_frame, text="업로드된 파일이 없습니다.", text_color="gray").pack(pady=10)
-        ctk.CTkButton(upload_frame, text="📤 파일 업로드", command=open_upload_modal).pack(pady=5)
-        return
-
-    ctk.CTkLabel(upload_frame, text="🎥 업로드된 영상", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(5, 0))
-
-    for idx, file in enumerate(result[:4]):
-        label_text = f"{idx+1}번 영상: {file.get('filename', 'Unnamed')}"
-        ctk.CTkLabel(upload_frame, text=label_text, anchor="w").pack(fill="x", padx=10, pady=2)
+    # 파일 업로드 버튼 (새 항목)은 upload_frame 바깥에 위치하거나, 여기서는 그냥 유지
+    # ctk.CTkButton(upload_frame, text="📤 파일 업로드 (새 항목)", command=open_upload_modal).pack(pady=5)
 
 
+# ---------------- 파일 업로드 모달 ----------------
 def open_upload_modal():
     if not selected_patient:
         messagebox.showwarning("환자 선택 필요", "먼저 환자를 선택해주세요.")
@@ -244,12 +419,18 @@ def open_upload_modal():
 
         try:
             files = {"file": open(file_path, "rb")}
-            url = f"http://localhost:8000/files/{selected_patient['patient_id']}/upload"
+            # 💡 API_URL을 30000 포트로 사용하고 있다면, 파일 업로드 엔드포인트도 30000 포트로 맞춰야 할 수 있습니다.
+            # 현재는 8000 포트로 되어 있으니, 실제 API 구조에 맞게 수정 필요합니다.
+            url = f"{API_URL}/files/{selected_patient['patient_id']}/upload"
             response = requests.post(url, files=files)
             if response.status_code == 200:
                 messagebox.showinfo("성공", "파일 업로드가 완료되었습니다.")
                 modal.destroy()
-                # 필요 시 업로드 후 파일 목록 새로고침 추가 가능
+                # 업로드 후 항목 목록 새로고침을 위해 on_select_patient 재호출 (캐시 제거)
+                pid = selected_patient["patient_id"]
+                if pid in items_cache:
+                    del items_cache[pid]
+                on_select_patient(selected_patient, selected_row) 
             else:
                 messagebox.showerror("실패", f"업로드 실패: {response.status_code}\n{response.text}")
         except Exception as e:
@@ -258,6 +439,7 @@ def open_upload_modal():
     ctk.CTkButton(modal, text="업로드", command=upload_file).pack(pady=10)
 
 
+# ---------------- 환자 선택 및 항목 로드 로직 ----------------
 def on_select_patient(patient, row_frame):
     global selected_patient, selected_row
 
@@ -273,27 +455,106 @@ def on_select_patient(patient, row_frame):
 
     pid = patient["patient_id"]
 
+    # 항목 표시 영역을 초기화하고 로딩 상태 표시
+    show_empty_state() # 설문 영역 초기화
+    show_file_items([]) # 파일 영역 초기화
+
+    # 로딩 표시 (임시)
+    loading_label_survey = ctk.CTkLabel(score_frame, text="수집 항목 로드 중...", text_color="blue")
+    loading_label_survey.pack(pady=10)
+    loading_label_file = ctk.CTkLabel(upload_list_frame, text="수집 항목 로드 중...", text_color="blue")
+    loading_label_file.pack(pady=10)
+
     # ✅ 항목이 이미 캐시에 있으면 바로 처리
     if pid in items_cache:
-        handle_items_loaded(items_cache[pid])
+        loading_label_survey.destroy()
+        loading_label_file.destroy()
+        process_items(items_cache[pid])
         return
+
+    # on_select_patient 함수 내부
 
     # ✅ 스레드로 비동기 요청
     def fetch_in_background():
         try:
-            items = fetch_items(pid)
+            # 1. 메타데이터 (항목 기본 정보) 로드
+            items = fetch_items(pid) 
+
+            # 2. 설문 항목에 대해 상세 응답을 추가로 로드 (enrichment)
+            enriched_items = []
+            for item in items:
+                data_type = item.get('data_type', '').upper()
+                
+                # 설문 항목인지 확인 (process_items의 분류 로직을 따름)
+                is_survey_item = (
+                    'FORM' in item.get('data_category', '').upper() 
+                    or 'MDS-UPDRS' in data_type 
+                    or 'SURVEY' in data_type
+                )
+                
+                # 설문 항목인데 questions가 없는 경우에만 상세 조회
+                if is_survey_item and not item.get('questions'):
+                    item_id = item.get('item_id')
+                    print(item_id)
+                    if item_id:
+                        detailed_answers_raw = fetch_mds_answers(item_id) 
+                    
+                         # A. 요약 (Summary) 및 데이터 유무 판단용 데이터 (간결/압축)
+                        detailed_answers_formatted = format_mds_answers(detailed_answers_raw)
+                        
+                        # B. 폼 로딩 (Edit)용 원시 데이터 (상세)
+                        # 원시 데이터를 'raw_questions'와 같은 별도의 키에 저장합니다.
+                        item['questions_raw'] = detailed_answers_raw # <-- 원시 데이터 저장
+                        
+                        # 'questions' 키에는 요약용 데이터를 저장하여 has_data=True 및 generate_summary가 작동하도록 합니다.
+                        item['questions'] = detailed_answers_formatted
+                    
+                enriched_items.append(item)
+            
+            # 다음 단계(UI 업데이트)로 넘길 데이터는 enriched_items
+            items_to_process = enriched_items 
+
         except Exception as e:
-            items = e  # 예외 전달
+            items_to_process = e
+            
         # UI 업데이트는 main thread에서
         def update_ui():
-            if not isinstance(items, Exception):
-                items_cache[pid] = items
-            handle_items_loaded(items)
+            loading_label_survey.destroy()
+            loading_label_file.destroy()
+            
+            if not isinstance(items_to_process, Exception):
+                items_cache[pid] = items_to_process # 캐시도 상세 내용으로 업데이트
+                process_items(items_to_process)
+            else:
+                messagebox.showerror("에러", f"수집 항목 로딩 실패:\n{items_to_process}")
+                show_survey_items([])
+                show_file_items([])
+                
         root.after(0, update_ui)
 
     threading.Thread(target=fetch_in_background, daemon=True).start()
 
 
+def process_items(result):
+    """로드된 전체 항목을 설문과 파일로 분류하여 각 영역에 표시합니다."""
+    survey_items = []
+    file_items = []
+    
+    # 설문 항목은 data_type이 'MDS-UPDRS PART 3'이거나 'FORM'이 포함된 경우로 가정합니다.
+    # 파일 항목은 그 외의 모든 항목으로 간주합니다.
+    for item in result:
+        data_type = item.get('data_type', '').upper()
+        
+        # 유연한 분류 로직: data_category 또는 data_type에 'FORM', 'MDS-UPDRS', 'SURVEY'가 포함되면 설문으로 분류
+        if 'FORM' in item.get('data_category', '').upper() or 'MDS-UPDRS' in data_type or 'SURVEY' in data_type:
+            survey_items.append(item)
+        else:
+            file_items.append(item)
+    
+    show_survey_items(survey_items)
+    show_file_items(file_items)
+
+# ---------------- 환자 목록 테이블 로드 ----------------
 def load_patients_table():
     for widget in table_frame.winfo_children():
         widget.destroy()
@@ -405,13 +666,6 @@ def show_empty_state():
         widget.destroy()
     ctk.CTkLabel(score_frame, text="환자를 선택해주세요.", font=("", 14, "italic"), text_color="gray").pack(pady=20)
 
-def show_survey_buttons():
-    for widget in score_frame.winfo_children():
-        widget.destroy()
-    ctk.CTkButton(score_frame, text="기초 평가").pack(pady=5)
-    ctk.CTkButton(score_frame, text="정서 설문지 입력").pack(pady=5)
-    ctk.CTkButton(score_frame, text="수면 설문지 입력").pack(pady=5)
-
 def open_add_patient():
     modal = ctk.CTkToplevel(root)
     modal.title("환자 추가")
@@ -446,7 +700,13 @@ def open_add_patient():
             "is_data_complete": False,
             "completion_date": None
         }
-        add_patient(payload, INSTITUTION)
+        # 로딩 기능 추가 고려
+        try:
+            add_patient(payload, INSTITUTION)
+            messagebox.showinfo("성공", "환자 등록 완료")
+        except Exception as e:
+            messagebox.showerror("오류", f"환자 등록 실패: {e}")
+        
         load_patients_table()
         modal.destroy()
 
@@ -485,15 +745,24 @@ def open_survey_input():
 frame_video = ctk.CTkFrame(root)
 frame_video.grid(row=1, column=1, sticky="nsew", padx=5, pady=5)
 
-lbl_video_title = ctk.CTkLabel(frame_video, text="파일 업로드", font=("", 16, "bold"))
+lbl_video_title = ctk.CTkLabel(frame_video, text="파일 관리", font=("", 16, "bold"))
 lbl_video_title.pack(pady=10)
 
-upload_frame = ctk.CTkFrame(frame_video)
-upload_frame.pack(pady=10)
+# 파일 업로드 버튼을 묶는 프레임
+upload_button_frame = ctk.CTkFrame(frame_video)
+upload_button_frame.pack(pady=5)
+ctk.CTkButton(upload_button_frame, text="📤 파일 업로드", width=150, command=open_upload_modal).pack(side="left", padx=10)
+ctk.CTkButton(upload_button_frame, text="새 항목 등록", width=150).pack(side="left", padx=10)
 
-ctk.CTkButton(upload_frame, text="영상 업로드", width=150).pack(side="left", padx=10)
-ctk.CTkButton(upload_frame, text="기타 파일 업로드", width=150).pack(side="left", padx=10)
 
+# 파일 목록을 표시할 프레임 (show_file_items에서 관리)
+upload_list_frame = ctk.CTkFrame(frame_video)
+upload_list_frame.pack(fill="x", pady=5)
+
+
+# 프로그램 시작 시 상태 설정
 show_empty_state()
+# 파일 영역 초기 상태 설정
+show_file_items([]) 
 root.after(100, init_program)
 root.mainloop()

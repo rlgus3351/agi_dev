@@ -26,11 +26,13 @@ MDS_QUESTION_MAPPING = {
 
 
 class HealthSurveyForm(ctk.CTkFrame):
-    def __init__(self, parent, json_file=JSON_FILE, patient_id=None):
-        super().__init__(parent)
+    def __init__(self, parent, patient_id, json_file=JSON_FILE, initial_data=None, **kwargs):
+        super().__init__(parent, **kwargs)
         self.json_file = json_file
         # patient_id가 None이면 테스트용 UUID로 초기화
-        self.patient_id = patient_id if patient_id else str(uuid.uuid4())
+        self.initial_data = initial_data 
+        self.json_file = json_file
+        self.patient_id = patient_id
         self.widgets = {}
         self.data_vars = {}
         self.scrollable_frame = None  
@@ -343,7 +345,7 @@ class HealthSurveyForm(ctk.CTkFrame):
         """
         FastAPI의 /mds-form-answers/{item_id} 엔드포인트에 설문 응답을 전송합니다.
         """
-        url = f"{API_BASE_URL}/mds-form-answers/{item_id}"
+        url = f"{API_BASE_URL}/mds/{item_id}"
         api_payload = {"answers": answers_list}
         
         try:
@@ -394,7 +396,7 @@ class HealthSurveyForm(ctk.CTkFrame):
         raw_data = {key: var.get() for key, var in self.data_vars.items()}
         
         # ====================================================================
-        # 🚨 1. 필수 항목 누락 검증 로직 추가
+        # 🚨 1. 필수 항목 누락 검증 로직 (추가/수정된 부분)
         # ====================================================================
         missing_questions = []
         
@@ -414,8 +416,8 @@ class HealthSurveyForm(ctk.CTkFrame):
                             # self.data_vars에 저장된 키 형태: "18_Right"
                             sid = f"{item_id}_{side}" 
                             if not raw_data.get(sid, "").strip():
-                                 missing_questions.append(f"{question} ({side})")
-                                 
+                                missing_questions.append(f"{question} ({side})")
+                                
                     elif not raw_data.get(item_id, "").strip():
                         # 일반 항목은 해당 item_id로 검사
                         missing_questions.append(question)
@@ -423,8 +425,8 @@ class HealthSurveyForm(ctk.CTkFrame):
         if missing_questions:
             missing_list = '\n- ' + '\n- '.join(missing_questions[:5])
             if len(missing_questions) > 5:
-                 missing_list += f"\n... 외 {len(missing_questions) - 5}개 항목"
-                 
+                missing_list += f"\n... 외 {len(missing_questions) - 5}개 항목"
+                
             CTkMessagebox(
                 title="필수 항목 누락", 
                 message=f"다음 필수 설문 항목에 응답하지 않았습니다. 입력을 완료해주세요:{missing_list}", 
@@ -432,7 +434,7 @@ class HealthSurveyForm(ctk.CTkFrame):
             )
             return # 저장 및 API 전송 중단
         # ====================================================================
-    
+        
         answers_list = self.transform_to_api_format(raw_data)
         
         # 이 부분은 빈 값이 없으므로 사실상 answers_list가 비어있을 일은 없지만, 안전을 위해 유지
@@ -530,8 +532,8 @@ class HealthSurveyForm(ctk.CTkFrame):
             
             # 1. Item ID 확보
             if item_id is None:
-                 # item_id가 없으면, 새 Item을 등록 시도
-                 item_id = self.create_new_item_and_get_id(patient_id_from_file) 
+                # item_id가 없으면, 새 Item을 등록 시도
+                item_id = self.create_new_item_and_get_id(patient_id_from_file) 
 
             if item_id is None:
                 # Item ID 확보 실패 (API 오류로 인한 item_id 발급 실패)
@@ -548,16 +550,16 @@ class HealthSurveyForm(ctk.CTkFrame):
             
             # 3. 재전송 성공 시 로컬 파일 삭제 안내
             if api_success:
-                 # 성공적으로 전송했다는 메시지 후, 파일 삭제 여부를 묻는 메시지 박스
-                 if CTkMessagebox(
+                # 성공적으로 전송했다는 메시지 후, 파일 삭제 여부를 묻는 메시지 박스
+                if CTkMessagebox(
                     title="재전송 성공",
                     message=f"성공적으로 서버에 데이터를 전송했습니다.\n로컬 백업 파일 ({os.path.basename(file_path)})을 삭제하시겠습니까?",
                     icon="question",
                     option_2="삭제",
                     option_1="유지"
-                 ).get() == "삭제":
-                     os.remove(file_path)
-                     CTkMessagebox(title="파일 삭제 완료", message="로컬 파일이 삭제되었습니다.", icon="check")
+                ).get() == "삭제":
+                    os.remove(file_path)
+                    CTkMessagebox(title="파일 삭제 완료", message="로컬 파일이 삭제되었습니다.", icon="check")
 
         except FileNotFoundError:
             CTkMessagebox(title="오류", message="파일을 찾을 수 없습니다.", icon="cancel")
@@ -567,3 +569,6 @@ class HealthSurveyForm(ctk.CTkFrame):
             CTkMessagebox(title="처리 오류", message=f"데이터 재전송 중 예상치 못한 오류 발생: {e}", icon="cancel")
         
         self.is_resubmitting = False # 재전송 완료 표시
+
+
+

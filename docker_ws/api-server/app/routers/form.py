@@ -9,7 +9,7 @@ from database import get_db
 import schemas 
 
 router = APIRouter(
-    prefix="/mds-form-answers",
+    prefix="/mds",
     tags=["MDS Forms Answers"],
 )
 

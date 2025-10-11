@@ -108,3 +108,4 @@ def delete_item(item_id: int):
     except requests.RequestException as e:
         messagebox.showerror("에러", f"항목 삭제 실패: {e}")
         return False
+
