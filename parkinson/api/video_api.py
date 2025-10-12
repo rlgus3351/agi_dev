@@ -6,19 +6,19 @@ from config import ITEMS_BASE_URL, VIDEO_BASE_URL
 # -------------------------------------------------------------
 # API 통신 함수: 1단계 - Item 등록 (create_new_item_and_get_id)
 # -------------------------------------------------------------
-def create_new_item_and_get_id(target_patient_id: str) -> Union[int, None]:
+def create_new_item_and_get_id(target_patient_id: str, seq: int) -> Union[int, Tuple[None, str]]:
     """
     FastAPI의 /items/{patient_id}/item 엔드포인트를 호출하여 새 수집 항목을 등록하고 item_id를 반환합니다.
-    (CTkMessagebox 호출은 GUI 파일에서 처리하기 위해 API 함수는 순수하게 데이터만 반환하도록 수정하는 것이 좋습니다.)
+    (seq는 GUI에서 계산하여 전달받습니다.)
     """
     url = f"{ITEMS_BASE_URL}{target_patient_id}/item"
     
     item_payload = {
         "patient_id": target_patient_id, 
         "data_category": "PD", 
-        "data_type": "MDS-UPDRS Part 3",
-        "seq": 1,
-        "description": "MDS-UPDRS Part 3 설문 응답",
+        "data_type": "VIDEO",
+        "seq": seq,  # 👈 인수로 받은 seq 값 사용
+        "description": f"운동성 검사 영상 (시퀀스: {seq})",
     }
     try:
         response = requests.post(url, json=item_payload, timeout=5) 
@@ -28,13 +28,18 @@ def create_new_item_and_get_id(target_patient_id: str) -> Union[int, None]:
         return item_data.get("item_id")
 
     except requests.exceptions.RequestException as e:
-        # 오류 처리는 GUI (HealthSurveyForm)에서 담당하도록 예외를 다시 발생시키거나 None 반환
         error_msg = f"수집 항목(Item) 등록 실패: {e}"
         if hasattr(response, 'json'):
-            error_msg += f" | 서버 상세: {response.json().get('detail', '알 수 없음')}"
+            try:
+                # 응답을 다시 파싱하여 상세 오류 메시지 추출 시도
+                detail = response.json().get('detail', '알 수 없음')
+            except Exception:
+                detail = response.text[:100] # JSON 디코딩 실패 시 텍스트 일부
+                
+            error_msg += f" | 서버 상세: {detail}"
+            
         print(f"API Error (1): {error_msg}")
-        # GUI에서 메시지 박스를 띄울 수 있도록 예외와 함께 에러 메시지를 반환합니다.
-        return None, error_msg
+        return None, error_msg # 👈 (None, 에러 메시지) 튜플 반환
     
 # -------------------------------------------------------------
 # API 통신 함수: 2단계 - 비디오 메타데이터 다중 등록 (call_api_to_save_video_metadata)

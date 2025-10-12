@@ -81,34 +81,27 @@ class ItemUpdate(BaseModel):
 # ▶ 단일 비디오 메타데이터 등록용
 class VideoMetaCreate(BaseModel):
     item_id: Optional[int]                 # 상위 tb_items 외래키
-    video_label: Optional[str]             # 영상 구분명 (예: 'front', 'side', 'walk1')
     file_name: Optional[str]               # 실제 파일명
     file_path: Optional[str]               # 저장 경로
     file_size_mb: Optional[float]          # 파일 크기 (MB)
     duration_seconds: Optional[int]        # 길이 (초)
     resolution: Optional[str]              # 해상도 (예: '1920x1080')
     frame_rate: Optional[int]              # FPS
-    codec: Optional[str]                   # 비디오 코덱 (예: 'H.264')
     is_anonymized: Optional[bool] = False  # 비식별화 여부
-    uploader: Optional[str]                # 업로더 이름 or ID
-    note: Optional[str]                    # 비고란
 
 # ▶ 비디오 메타데이터 조회용
 class VideoMeta(BaseModel):
     video_metadata_id: int
     item_id: int
-    video_label: Optional[str]
     file_name: Optional[str]
     file_path: Optional[str]
     file_size_mb: Optional[float]
     duration_seconds: Optional[int]
     resolution: Optional[str]
     frame_rate: Optional[int]
-    codec: Optional[str]
     is_anonymized: Optional[bool]
-    upload_at: Optional[datetime]
-    uploader: Optional[str]
-    note: Optional[str]
+    created_ts: Optional[datetime]
+
 
     class Config:
         orm_mode = True

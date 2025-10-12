@@ -19,9 +19,10 @@ from api.item_api import fetch_items
 from utils.loader import run_with_loading, run_with_loading_popup
 from api.health_api import check_server_status
 from api.form_api import fetch_mds_answers
+from api.video_api import create_new_item_and_get_id, call_api_to_save_video_metadata
 # from config import HEALTH_URL, INSTITUTION  # config에서 가져옴 (현재는 하드코딩 사용)
 from form.survey import HealthSurveyForm
-
+from utils.videometa import get_video_metadata
 
 JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
 JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
@@ -408,53 +409,167 @@ def open_upload_modal():
         messagebox.showwarning("환자 선택 필요", "먼저 환자를 선택해주세요.")
         return
 
-    modal = ctk.CTkToplevel()
-    modal.title("파일 업로드")
-    modal.geometry("400x200")
+    # ---------------- 1. 모달 기본 설정 ----------------
+    modal = ctk.CTkToplevel(root)
+    # 제목 변경: '업로드' 대신 '메타데이터 등록' 강조
+    modal.title(f"{selected_patient.get('patient_initials', '')} 환자 영상 메타데이터 등록") 
+    modal.geometry("500x400")
     modal.grab_set()
 
-    ctk.CTkLabel(modal, text="업로드할 영상 파일을 선택하세요:").pack(pady=10)
+    # 업로드할 영상 목록
+    VIDEO_SLOTS = {
+        1: "1번 영상 (A)",
+        2: "2번 영상 (B)",
+        3: "3번 영상 (C)",
+        4: "손글씨 영상 (D)",
+    }
+    
+    file_paths = {i: ctk.StringVar() for i in VIDEO_SLOTS}
+    
+    main_frame = ctk.CTkFrame(modal)
+    main_frame.pack(fill="both", expand=True, padx=20, pady=10)
+    
+    # ---------------- 2. 4개의 파일 선택 위젯 생성 (기존과 동일) ----------------
+    for i, label_text in VIDEO_SLOTS.items():
+        row_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        row_frame.pack(fill="x", pady=5)
+        row_frame.grid_columnconfigure(1, weight=1)
+        
+        ctk.CTkLabel(row_frame, text=f"🎥 {label_text}:", width=120, anchor="w").grid(row=0, column=0, padx=5, sticky="w")
+        
+        entry = ctk.CTkEntry(row_frame, textvariable=file_paths[i], placeholder_text="선택된 파일 없음", width=250)
+        entry.grid(row=0, column=1, padx=5, sticky="ew")
 
-    file_path_var = ctk.StringVar()
+        def create_browse_command(var):
+            return lambda: browse_file_to_var(var)
 
-    file_entry = ctk.CTkEntry(modal, textvariable=file_path_var, width=250)
-    file_entry.pack(pady=5)
+        ctk.CTkButton(row_frame, text="찾기", width=80, 
+                      command=create_browse_command(file_paths[i])).grid(row=0, column=2, padx=5)
 
-    def browse_file():
+    def browse_file_to_var(var: ctk.StringVar):
         file_path = filedialog.askopenfilename(
             filetypes=[("Video files", "*.mp4;*.avi;*.mov;*.mkv"), ("All files", "*.*")]
         )
         if file_path:
-            file_path_var.set(file_path)
+            var.set(file_path)
 
-    ctk.CTkButton(modal, text="파일 찾기", command=browse_file).pack(pady=5)
+    # ---------------- 3. 메타데이터 등록 함수 (파일 업로드 없음) ----------------
+    def start_metadata_registration():
+        # 1. 유효성 검사 및 등록할 메타데이터 리스트 준비
+        meta_data_to_register = []
+        target_patient_id = selected_patient['patient_id']
+        uploader_name = "GUI_User" # uploader 필드용 상수
 
-    def upload_file():
-        file_path = file_path_var.get()
-        if not file_path or not os.path.isfile(file_path):
-            messagebox.showerror("오류", "유효한 파일을 선택하세요.")
+        for i, var in file_paths.items():
+            local_path = var.get() 
+
+            if local_path and os.path.isfile(local_path):
+                file_name = os.path.basename(local_path)
+                
+                # 🚨 수정: file_size_mb를 계산하고 numeric(10,2)에 맞게 문자열로 변환
+                file_size_mb_float = os.path.getsize(local_path) / (1024 * 1024)
+                file_size_mb_str = f"{file_size_mb_float:.2f}" 
+
+                # 💡 get_video_metadata 호출
+                video_info = get_video_metadata(local_path) 
+                
+                simulated_server_path = f"output/video/{target_patient_id}/{file_name}" 
+                video_label = VIDEO_SLOTS[i]
+                note_content = f"슬롯 {i}번 ({video_label}) 영상 메타데이터 등록 (로컬 경로: {local_path})"
+                is_anon = 1 if i in [1, 2, 3] else 0
+                # 메타데이터 등록을 위한 데이터 생성 (누락된 필수 필드 추가)
+                meta_data_to_register.append({
+                    
+                    # 📌 필수 필드 1: item_id는 아래에서 추가
+                    "video_label": video_label,
+                    "file_name": file_name,
+                    
+                    "file_path": simulated_server_path, 
+                    # 🚨 수정 적용: 문자열로 변환된 file_size_mb 사용
+                    "file_size_mb": file_size_mb_str,
+                    
+                    # 🚨 수정 적용: 정수형으로 변환 (소수점 버림)
+                    "duration_seconds": int(video_info.get("duration_seconds", 0.0)),
+                    "resolution": video_info.get("resolution", "N/A"),
+                    # 🚨 수정 적용: 정수형으로 변환 (소수점 버림)
+                    "frame_rate": int(video_info.get("frame_rate", 0.0)),
+                    # 🚨 수정 적용: False 대신 정수 0 사용
+                    "is_anonymized": is_anon
+                    
+                   
+                })
+
+        if not meta_data_to_register:
+            CTkMessagebox(title="경고", message="등록할 영상 파일을 하나 이상 선택해주세요.", icon="warning")
             return
 
-        try:
-            files = {"file": open(file_path, "rb")}
-            # 💡 API_URL을 30000 포트로 사용하고 있다면, 파일 업로드 엔드포인트도 30000 포트로 맞춰야 할 수 있습니다.
-            # 현재는 8000 포트로 되어 있으니, 실제 API 구조에 맞게 수정 필요합니다.
-            url = f"{API_URL}/files/{selected_patient['patient_id']}/upload"
-            response = requests.post(url, files=files)
-            if response.status_code == 200:
-                messagebox.showinfo("성공", "파일 업로드가 완료되었습니다.")
-                modal.destroy()
-                # 업로드 후 항목 목록 새로고침을 위해 on_select_patient 재호출 (캐시 제거)
-                pid = selected_patient["patient_id"]
-                if pid in items_cache:
-                    del items_cache[pid]
-                on_select_patient(selected_patient, selected_row) 
-            else:
-                messagebox.showerror("실패", f"업로드 실패: {response.status_code}\n{response.text}")
-        except Exception as e:
-            messagebox.showerror("에러", f"업로드 중 오류 발생: {e}")
+        # 2. 로딩 팝업 실행
+        def register_video_metadata():
+            # --- A. Item의 다음 seq 계산 ---
+            current_items = items_cache.get(target_patient_id, [])
+            
+            max_seq = 0
+            for item in current_items:
+                # 'VIDEO' 또는 'FILE' 관련 항목의 최대 시퀀스 번호 찾기
+                if 'VIDEO' in item.get('data_type', '').upper() or 'FILE' in item.get('data_category', '').upper():
+                    max_seq = max(max_seq, item.get('seq', 0))
 
-    ctk.CTkButton(modal, text="업로드", command=upload_file).pack(pady=10)
+            next_seq = max_seq + 1
+            
+            # --- B. Item 등록 (비디오 전용 새 항목) ---
+            # 🚨 Item 등록 API 호출 시, 백엔드에서 트랜잭션 커밋이 제대로 이루어져야 함.
+            item_id_or_error = create_new_item_and_get_id(target_patient_id, next_seq)
+
+            if not isinstance(item_id_or_error, int):
+                return False, f"새 수집 항목 등록 실패: {item_id_or_error[1]}"
+            
+            item_id = item_id_or_error
+            
+            # 🚨 item_id를 등록할 모든 영상 데이터에 일괄 추가 (FK 오류 방지)
+            for meta in meta_data_to_register:
+                meta['item_id'] = item_id
+            
+            # --- C. 비디오 메타데이터 DB 등록 ---
+            success, msg = call_api_to_save_video_metadata(item_id, meta_data_to_register)
+            
+            if success:
+                return True, (f"{len(meta_data_to_register)}개 영상 메타데이터 DB 등록 완료.\n"
+                                f"새 항목 ID: {item_id} (Seq: {next_seq})\n"
+                                f"파일 경로는 'output/video' 기준으로 등록되었습니다.")
+            else:
+                return False, f"메타데이터 DB 등록 실패: {msg}"
+
+
+        # 3. 비동기 실행 및 콜백 처리
+        def after_registration(result):
+            modal.destroy()
+            success, message = result
+            if success:
+                CTkMessagebox(title="성공", message=message, icon="check")
+            else:
+                CTkMessagebox(title="오류", message=message, icon="cancel")
+            
+            # 등록 완료 후 항목 목록 새로고침
+            pid = target_patient_id
+            if pid in items_cache:
+                del items_cache[pid]
+            # selected_patient와 selected_row가 전역으로 유지되어야 함
+            if selected_patient and selected_row: 
+                on_select_patient(selected_patient, selected_row) 
+
+        run_with_loading_popup(
+            parent_frame=root,
+            fetch_function=register_video_metadata,
+            callback=after_registration,
+            loading_text="영상 메타데이터 DB 등록 중..."
+        )
+    
+    # ---------------- 4. 등록 실행 버튼 ----------------
+    # 버튼 텍스트를 '메타데이터 DB 등록'으로 변경
+    ctk.CTkButton(modal, text="💾 메타데이터 DB 등록", 
+                  command=start_metadata_registration, 
+                  fg_color="#34A853", hover_color="#2C8E47").pack(pady=20)
+
 
 
 # ---------------- 환자 선택 및 항목 로드 로직 ----------------
