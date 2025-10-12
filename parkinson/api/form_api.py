@@ -129,3 +129,22 @@ def transform_to_api_format(raw_data: dict) -> list:
             }
             answers.append(answer)
     return answers
+
+
+def call_api_to_update_data(answers_list: list) -> Tuple[bool, Union[str, None]]:
+    """
+    FastAPI의 /answers 엔드포인트를 호출하여 기존 설문 응답(answer_id, answer_value)을 수정합니다.
+    """
+    url = f"{FORM_BASE_URL.rstrip('/')}/answers"
+    payload = {"answers": answers_list}
+
+    try:
+        response = requests.put(url, json=payload, timeout=10)
+        response.raise_for_status()
+        return True, None
+    except requests.exceptions.RequestException as e:
+        error_msg = f"설문 응답 수정 실패: {e}"
+        if hasattr(response, "json"):
+            error_msg += f" | 서버 상세: {response.json().get('detail', '알 수 없음')}"
+        print(f"API Error (3): {error_msg}")
+        return False, error_msg

@@ -355,16 +355,19 @@ def open_survey_form(item_data=None):
 
     ctk.CTkLabel(modal, text=f"📝 운동성 설문지 - {initials} ({item_type})", font=("", 16, "bold")).pack(pady=10)
 
-    # 설문 폼 불러오기
+    # ✅ 콜백 전달: 폼이 닫힐 때 환자 데이터 다시 불러오기
+    def reload_after_close():
+        on_select_patient(selected_patient, selected_row)  # 설문 + 파일 목록 리로드
+
     survey_form = HealthSurveyForm(
-        modal, 
-        json_file=JSON_FILE, 
+        modal,
+        json_file=JSON_FILE,
         patient_id=patient_uuid,
-        # ✅ 계산된 변수를 전달
-        initial_data=initial_form_data 
-    ) 
+        initial_data=initial_form_data,
+        on_close_callback=reload_after_close  # ✅ 여기 추가
+    )
     survey_form.pack(fill="both", expand=True, padx=10, pady=10)
-    
+
     # 모달 닫기 시 캐시를 지우고 목록을 새로고침
     def on_modal_close():
         pid = selected_patient["patient_id"]
