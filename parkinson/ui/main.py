@@ -357,6 +357,9 @@ def open_survey_form(item_data=None):
 
     # ✅ 콜백 전달: 폼이 닫힐 때 환자 데이터 다시 불러오기
     def reload_after_close():
+        pid = selected_patient["patient_id"]
+        if pid in items_cache:
+            del items_cache[pid]  # ✅ 캐시 제거
         on_select_patient(selected_patient, selected_row)  # 설문 + 파일 목록 리로드
 
     survey_form = HealthSurveyForm(

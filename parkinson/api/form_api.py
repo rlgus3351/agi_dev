@@ -58,7 +58,7 @@ def call_api_to_save_data(item_id: int, answers_list: list) -> Tuple[bool, Union
     FastAPI의 /mds-form-answers/{item_id} 엔드포인트에 설문 응답을 전송합니다.
     (성공 여부, 에러 메시지) 튜플을 반환합니다.
     """
-    url = f"{FORM_BASE_URL}/{item_id}"
+    url = f"{FORM_BASE_URL}{item_id}"
     api_payload = {"answers": answers_list}
     
     try:

@@ -167,87 +167,195 @@ class HealthSurveyForm(ctk.CTkFrame):
             self._handle_edit(answers)
 
     # ---------------- 신규 삽입 ----------------
-    def _handle_insert(self, answers):
-        item_id = create_new_item_and_get_id(self.patient_id)
-        if not item_id:
-            CTkMessagebox(title="API 오류", message="Item 생성 실패", icon="cancel")
-            return
+    # def _handle_insert(self, answers):
+    #     item_id = create_new_item_and_get_id(self.patient_id)
+    #     if not item_id:
+    #         CTkMessagebox(title="API 오류", message="Item 생성 실패", icon="cancel")
+    #         return
 
-        success, err = call_api_to_save_data(item_id, answers)
-        if success:
-            CTkMessagebox(title="성공", message="새 설문이 등록되었습니다.", icon="check")
-            if callable(self.on_close_callback):
-                self.on_close_callback()  # ✅ 신규 입력 후도 리로드
-        else:
-            CTkMessagebox(title="오류", message=err, icon="cancel")
+    #     success, err = call_api_to_save_data(item_id, answers)
+    #     if success:
+    #         CTkMessagebox(title="성공", message="새 설문이 등록되었습니다.", icon="check")
+    #         if callable(self.on_close_callback):
+    #             self.on_close_callback()  # ✅ 신규 입력 후도 리로드
+    #     else:
+    #         CTkMessagebox(title="오류", message=err, icon="cancel")
+    def _handle_insert(self, answers):
+        """새로운 설문 데이터를 서버에 저장하는 로직 (간단한 필수값 검증 포함)"""
+
+        # ✅ 중복 클릭 방지 (버튼 잠금)
+        self.submit_btn.configure(state="disabled", text="저장 중...")
+
+        try:
+            # ✅ 필수값 검증: 모든 값이 비어 있으면 경고
+            empty_fields = [k for k, v in self.data_vars.items() if not str(v.get()).strip()]
+            if len(empty_fields) == len(self.data_vars):
+                CTkMessagebox(
+                    title="입력 오류",
+                    message="값이 입력되지 않았습니다.\n최소 한 항목 이상 입력해주세요.",
+                    icon="warning"
+                )
+                return
+
+            # ✅ 일부 항목만 입력된 경우 안내 (선택사항)
+            if empty_fields:
+                msg = f"총 {len(empty_fields)}개 항목이 비어 있습니다.\n그래도 저장하시겠습니까?"
+                confirm_box = CTkMessagebox(
+                    title="확인",
+                    message=msg,
+                    icon="question",
+                    option_1="예",
+                    option_2="아니오"
+                )
+                if confirm_box.get() == "아니오":
+                    return
+
+            # ✅ 모든 입력값을 문자열로 변환
+            for a in answers:
+                a["answer_value"] = str(a.get("answer_value", "")).strip()
+
+            # ✅ 서버 요청
+            success, err = call_api_to_save_data(self.patient_id, answers)
+
+            if success:
+                # ✅ 성공 메시지 → 창 닫기 여부
+                confirm_box = CTkMessagebox(
+                    title="성공",
+                    message="데이터가 성공적으로 저장되었습니다.",
+                    icon="check",
+                    option_1="확인"
+                )
+                confirm_box.get()
+
+                close_box = CTkMessagebox(
+                    title="창 닫기",
+                    message="폼을 닫을까요?",
+                    icon="question",
+                    option_1="예",
+                    option_2="아니오"
+                )
+                if close_box.get() == "예":
+                    if callable(self.on_close_callback):
+                        self.on_close_callback()
+                    if self.master and hasattr(self.master, "destroy"):
+                        self.master.destroy()
+            else:
+                CTkMessagebox(title="오류", message=err or "저장 실패", icon="cancel")
+
+        finally:
+            # ✅ 저장 완료 후 버튼 다시 활성화
+            self.submit_btn.configure(state="normal", text="데이터 저장")
+
 
     # ---------------- 수정 모드 ----------------
     def _handle_edit(self, answers):
         print(f"[DEBUG] data_vars snapshot: { {k: v.get() for k, v in self.data_vars.items()} }")
         updated = []
-
-    # ✅ 역매핑 생성 (question_id → json_id)
-        reverse_map = {v: k for k, v in MDS_QUESTION_MAPPING.items()}
-
-        for ans in self.initial_data:
-            aid = ans.get("answer_id")
-            qid = ans.get("question_id")
-            qid = ans.get("question_id")
-            comp = ans.get("answer_component")
-
-            # ✅ DB의 question_id를 json_id로 변환
-            json_id = reverse_map.get(qid)
-            if not json_id:
-                print(f"[WARN] question_id {qid} not found in reverse map → skipped")
-                continue
-
-            key = f"{json_id}_{comp}" if comp not in [None, "", "None"] else str(json_id)
-
-            var = self.data_vars.get(key)
-            if var is None:
-                print(f"[WARN] key {key} not found in self.data_vars → skipped")
-                continue
-
-            new_val = var.get().strip()
-            old_val = str(ans.get("answer_value", "")).strip()
-
-            if new_val and new_val != old_val:
-                formatted_val = new_val
-                if new_val.replace('.', '', 1).isdigit():
-                    formatted_val = float(new_val) if '.' in new_val else int(new_val)
-                updated.append({
-                    "answer_id": aid,
-                    "answer_value": formatted_val
-                })
-
+    
+        # ✅ 중복 클릭 방지 (버튼 잠금)
+        self.submit_btn.configure(state="disabled", text="수정 중...")
+    
+        try:
+            reverse_map = {v: k for k, v in MDS_QUESTION_MAPPING.items()}
+    
+            # ✅ JSON에서 min/max 정보 미리 로드
+            range_map = {}
+            try:
+                with open(self.json_file, 'r', encoding='utf-8') as f:
+                    json_data = json.load(f)
+                    for section in json_data.get("운동성 검사", {}).get("sections", []):
+                        for item in section.get("body", []):
+                            item_id = item.get("id")
+                            range_map[item_id] = {
+                                "min": item.get("min"),
+                                "max": item.get("max"),
+                                "type": item.get("type")
+                            }
+            except Exception as e:
+                print(f"[WARN] 범위 정보 로드 실패: {e}")
+    
+            # ✅ 실제 값 비교 시작
+            for ans in self.initial_data:
+                aid = ans.get("answer_id")
+                qid = ans.get("question_id")
+                comp = ans.get("answer_component")
+                json_id = reverse_map.get(qid)
+                if not json_id:
+                    print(f"[WARN] question_id {qid} not found in reverse map → skipped")
+                    continue
+                
+                key = f"{json_id}_{comp}" if comp not in [None, "", "None"] else str(json_id)
+                var = self.data_vars.get(key)
+                if var is None:
+                    print(f"[WARN] key {key} not found in self.data_vars → skipped")
+                    continue
+                
+                new_val = str(var.get()).strip()
+                old_val = str(ans.get("answer_value", "")).strip()
+    
+                # ✅ min/max 유효성 검사
+                range_info = range_map.get(json_id)
+                if range_info and range_info["type"] in ["input-number", "grouped-inputs"]:
+                    min_v = range_info.get("min")
+                    max_v = range_info.get("max")
+    
+                    try:
+                        num_val = float(new_val)
+                        if min_v is not None and num_val < min_v:
+                            CTkMessagebox(
+                                title="입력 오류",
+                                message=f"문항 [{json_id}]의 값이 최소값({min_v})보다 작습니다.",
+                                icon="warning"
+                            )
+                            return
+                        if max_v is not None and num_val > max_v:
+                            CTkMessagebox(
+                                title="입력 오류",
+                                message=f"문항 [{json_id}]의 값이 최대값({max_v})보다 큽니다.",
+                                icon="warning"
+                            )
+                            return
+                    except ValueError:
+                        pass  # 숫자 아님 (라디오 등)
+                    
+                # ✅ 변경된 값만 추가
+                if new_val != old_val:
+                    updated.append({
+                        "answer_id": aid,
+                        "answer_value": new_val  # 문자열로 통일
+                    })
+    
             if not updated:
                 CTkMessagebox(title="알림", message="변경된 내용이 없습니다.", icon="info")
                 return
-
-        # ✅ 서버 요청
-        success, err = call_api_to_update_data(updated)
-        if success:
-            confirm_box = CTkMessagebox(
-                title="성공",
-                message=f"{len(updated)}개 응답이 수정되었습니다.",
-                icon="check",
-                option_1="확인"
-            )
-            confirm_box.get()
-
-            close_box = CTkMessagebox(
-                title="창 닫기",
-                message="폼을 닫을까요?",
-                icon="question",
-                option_1="예",
-                option_2="아니오"
-            )
-            result = close_box.get()
-            if result == "예":
-                if callable(self.on_close_callback):
-                    self.on_close_callback()  # ✅ 메인 화면 데이터 새로고침 호출
-            
-                if self.master and hasattr(self.master, "destroy"):
-                    self.master.destroy()
-        else:
-            CTkMessagebox(title="오류", message=err or "수정 실패", icon="cancel")
+    
+            # ✅ 서버 요청
+            success, err = call_api_to_update_data(updated)
+            if success:
+                confirm_box = CTkMessagebox(
+                    title="성공",
+                    message=f"{len(updated)}개 응답이 수정되었습니다.",
+                    icon="check",
+                    option_1="확인"
+                )
+                confirm_box.get()
+    
+                close_box = CTkMessagebox(
+                    title="창 닫기",
+                    message="폼을 닫을까요?",
+                    icon="question",
+                    option_1="예",
+                    option_2="아니오"
+                )
+                result = close_box.get()
+                if result == "예":
+                    if callable(self.on_close_callback):
+                        self.on_close_callback()
+                    if self.master and hasattr(self.master, "destroy"):
+                        self.master.destroy()
+            else:
+                CTkMessagebox(title="오류", message=err or "수정 실패", icon="cancel")
+    
+        finally:
+            # ✅ 완료 후 버튼 다시 활성화
+            self.submit_btn.configure(state="normal", text="데이터 수정")
