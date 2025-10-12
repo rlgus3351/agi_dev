@@ -81,3 +81,31 @@ def create_mds_form_answers(
         status_code=status.HTTP_201_CREATED, 
         content={"message": f"{len(request.answers)}개의 MDS 설문 응답이 item_id={item_id}에 성공적으로 등록되었습니다."}
     )
+
+
+@router.put("/answers", status_code=status.HTTP_200_OK)
+def update_answer_values(
+    request: schemas.MDSAnswerValueUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    answer_id 기준으로 answer_value만 수정하는 경량 업데이트 API
+    """
+    if not request.answers:
+        raise HTTPException(status_code=400, detail="수정할 응답이 없습니다.")
+
+    query = text("""
+        UPDATE tb_Questionnaire_Answers
+        SET answer_value = :answer_value
+        WHERE answer_id = :answer_id
+    """)
+
+    try:
+        params = [{"answer_id": ans.answer_id, "answer_value": ans.answer_value} for ans in request.answers]
+        db.execute(query, params)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"업데이트 실패: {str(e)}")
+
+    return {"message": f"{len(request.answers)}개 항목이 성공적으로 수정되었습니다."}

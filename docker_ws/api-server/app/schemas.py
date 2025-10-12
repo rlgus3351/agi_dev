@@ -138,3 +138,9 @@ class MDSForm(BaseModel):
 class MDSFormsCreate(BaseModel):
     answers: List[MDSFormCreate]
 
+class MDSAnswerValueUpdate(BaseModel):
+    answer_id: int
+    answer_value: Union[str, int]  # 수정할 값만 받음
+
+class MDSAnswerValueUpdateRequest(BaseModel):
+    answers: List[MDSAnswerValueUpdate]
