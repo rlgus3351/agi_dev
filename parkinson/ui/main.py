@@ -211,19 +211,7 @@ def show_survey_items(survey_items):
             font=("", 13, "italic"),
             text_color="gray"
         ).pack(pady=20)
-        new_item_data = {
-            'data_category': 'PD', 
-            'data_type': 'MDS-UPDRS Part 3', # 초기 입력 시 사용할 설문 유형
-            'seq': 1 # 최초 항목이므로 1로 지정 (저장 시 백엔드에서 시퀀스 부여/업데이트가 필요할 수 있음)
-        }
         
-        ctk.CTkButton(
-            score_frame,
-            text="➕ 새 설문 항목 등록 및 입력",
-            command=lambda data=new_item_data: open_survey_form(data),
-            fg_color="#007BFF",
-            hover_color="#0056b3"
-        ).pack(pady=(5, 20))
 
         return # 항목이 없으므로 여기서 함수 종료
     else:
@@ -302,6 +290,20 @@ def show_survey_items(survey_items):
                 width=60,
                 height=40 # 버튼 높이를 조금 키워 보기 좋게 조정
             ).grid(row=0, column=1, padx=5, pady=5)
+
+        new_item_data = {
+            'data_category': 'PD', 
+            'data_type': 'MDS-UPDRS Part 3', # 초기 입력 시 사용할 설문 유형
+            'seq': 1 # 최초 항목이므로 1로 지정 (저장 시 백엔드에서 시퀀스 부여/업데이트가 필요할 수 있음)
+        }
+        
+        ctk.CTkButton(
+            score_frame,
+            text="➕ 새 설문 항목 등록 및 입력",
+            command=lambda data=new_item_data: open_survey_form(data),
+            fg_color="#007BFF",
+            hover_color="#0056b3"
+        ).pack(pady=(5, 20))
 
 
 def open_survey_form(item_data=None):
