@@ -153,7 +153,6 @@ def generate_summary(item_data):
     
     # 💡 item_data는 fetch_items의 응답에서 온 항목 데이터라고 가정합니다.
     # 설문 답변 데이터는 item_data['questions'] 리스트에 저장되어 있다고 가정합니다.
-    print(item_data)
     questions = item_data.get('questions')
     if not questions:
         return "데이터 없음"
@@ -247,21 +246,32 @@ def show_survey_items(survey_items):
             row_frame.grid_columnconfigure(0, weight=1) # 항목/요약 영역 확장
             row_frame.grid_columnconfigure(1, weight=0) # 버튼 영역 고정
 
-            # 1. 항목 이름 및 요약 표시 영역
+        
+            
+            collected_at_raw = item['collected_at']
+            formatted_date = ""
+            if collected_at_raw:
+                try:
+                    # ISO 8601 형식 문자열을 datetime 객체로 변환
+                    dt_obj = datetime.strptime(collected_at_raw.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+                    # 원하는 형식으로 포맷팅 (YYYY-MM-DD HH:MM:SS)
+                    formatted_date = dt_obj.strftime(" (%Y-%m-%d %H:%M:%S)")
+                except Exception:
+                    formatted_date = " (날짜 오류)"
+            # 항목 이름
+            item_name = f"[{item['data_category']}]{item['data_type']}\n저장 일자:{formatted_date}"
             item_summary_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
             item_summary_frame.grid(row=0, column=0, sticky="ew", padx=(5, 10))
-            
-            # 항목 이름
-            item_name = f"[{item['data_category']}] {item['data_type']}"
+
             ctk.CTkLabel(
                 item_summary_frame,
-                text=item_name,
+                text=item_name, # 👈 \n이 포함된 문자열
                 anchor="w",
-                justify="left",
+                justify="left", # 👈 'left' 정렬을 유지하여 두 줄 모두 왼쪽으로 붙도록 합니다.
                 font=ctk.CTkFont(size=13, weight="bold" if has_data else "normal")
             ).pack(fill="x", anchor="w")
             
-            print(item)
+        
             # 요약 정보
             summary_text = generate_summary(item) if has_data else "미입력 상태"
             ctk.CTkLabel(
@@ -495,7 +505,7 @@ def on_select_patient(patient, row_frame):
                 # 설문 항목인데 questions가 없는 경우에만 상세 조회
                 if is_survey_item and not item.get('questions'):
                     item_id = item.get('item_id')
-                    print(item_id)
+
                     if item_id:
                         detailed_answers_raw = fetch_mds_answers(item_id) 
                     
