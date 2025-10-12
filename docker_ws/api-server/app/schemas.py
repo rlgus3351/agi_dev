@@ -78,33 +78,60 @@ class ItemUpdate(BaseModel):
 #  \___/  \___/ |___/  \____/  \___/ \_|  |_/\____/   \_/  \_| |_/
                                                                 
                                                             
-# 비디오 항목 등록용
+# ▶ 단일 비디오 메타데이터 등록용
 class VideoMetaCreate(BaseModel):
-    item_id: Optional[int]               # 외래 키
-    file_path: Optional[str]             # 파일 경로
-    file_size_mb: Optional[float]        # 파일 크기 (MB 단위)
-    duration_seconds: Optional[int]     # 영상 길이 (초)
-    resolution: Optional[str]           # 해상도 (예: 1920x1080)
-    frame_rate: Optional[int]            # 프레임 레이트 (fps)
-    is_anonymized: Optional[int]         # 비식별화 여부 (0:N, 1:Y)
+    item_id: Optional[int]                 # 상위 tb_items 외래키
+    video_label: Optional[str]             # 영상 구분명 (예: 'front', 'side', 'walk1')
+    file_name: Optional[str]               # 실제 파일명
+    file_path: Optional[str]               # 저장 경로
+    file_size_mb: Optional[float]          # 파일 크기 (MB)
+    duration_seconds: Optional[int]        # 길이 (초)
+    resolution: Optional[str]              # 해상도 (예: '1920x1080')
+    frame_rate: Optional[int]              # FPS
+    codec: Optional[str]                   # 비디오 코덱 (예: 'H.264')
+    is_anonymized: Optional[bool] = False  # 비식별화 여부
+    uploader: Optional[str]                # 업로더 이름 or ID
+    note: Optional[str]                    # 비고란
 
-
-# 수집 항목 조회용
+# ▶ 비디오 메타데이터 조회용
 class VideoMeta(BaseModel):
-    video_metadata_id:Optional[int]
-    item_id: Optional[int]               # 외래 키
-    file_path: Optional[str]             # 파일 경로
-    file_size_mb: Optional[float]        # 파일 크기 (MB 단위)
-    duration_seconds: Optional[int]     # 영상 길이 (초)
-    resolution: Optional[str]           # 해상도 (예: 1920x1080)
-    frame_rate: Optional[int]            # 프레임 레이트 (fps)
-    is_anonymized: Optional[int]         # 비식별화 여부 (0:N, 1:Y)
+    video_metadata_id: int
+    item_id: int
+    video_label: Optional[str]
+    file_name: Optional[str]
+    file_path: Optional[str]
+    file_size_mb: Optional[float]
+    duration_seconds: Optional[int]
+    resolution: Optional[str]
+    frame_rate: Optional[int]
+    codec: Optional[str]
+    is_anonymized: Optional[bool]
+    upload_at: Optional[datetime]
+    uploader: Optional[str]
+    note: Optional[str]
 
     class Config:
         orm_mode = True
-# 여러 항목 등록용 DTO
-class VideoMetaCreate(BaseModel):
-    items: List[VideoMetaCreate]
+
+
+# ▶ 여러 영상 등록용 (배치)
+class VideoMetasCreate(BaseModel):
+    videos: List[VideoMetaCreate]
+
+
+# ▶ 영상 메타데이터 수정용
+class VideoMetaUpdate(BaseModel):
+    video_label: Optional[str]
+    file_name: Optional[str]
+    file_path: Optional[str]
+    file_size_mb: Optional[float]
+    duration_seconds: Optional[int]
+    resolution: Optional[str]
+    frame_rate: Optional[int]
+    codec: Optional[str]
+    is_anonymized: Optional[bool]
+    uploader: Optional[str]
+    note: Optional[str]
 
 # 수집 항목 수정용
 class VideoMetaUpdate(BaseModel):
