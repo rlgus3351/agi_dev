@@ -30,7 +30,6 @@ def read_videos_by_item_id(item_id: int, db: Session = Depends(get_db)):
             is_anonymized, created_ts
         FROM tb_Video_Metadata
         WHERE item_id = :item_id
-        ORDER BY upload_at DESC
     """)
 
     result = db.execute(query, {"item_id": item_id}).fetchall()

@@ -10,6 +10,9 @@ import requests
 from CTkMessagebox import CTkMessagebox
 import threading
 import time
+import subprocess
+import platform
+from tkvideo import tkvideo
 
 # ✅ sys.path 수정
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +26,7 @@ from api.item_api import fetch_items
 from utils.loader import run_with_loading, run_with_loading_popup
 from api.health_api import check_server_status
 from api.form_api import fetch_mds_answers
-from api.video_api import create_new_item_and_get_id, call_api_to_save_video_metadata
+from api.video_api import create_new_item_and_get_id, call_api_to_save_video_metadata,fetch_video_metadata_by_item_id
 # from config import HEALTH_URL, INSTITUTION  # config에서 가져옴 (현재는 하드코딩 사용)
 from form.survey import HealthSurveyForm
 from utils.videometa import get_video_metadata
@@ -814,88 +817,89 @@ def on_select_patient(patient, row_frame):
 def open_file_action(file_data):
     """
     파일 항목의 '보기' 버튼 클릭 시 호출됩니다.
-    주로 비디오 파일을 처리합니다.
+    비디오 항목이면 내부 비디오 재생기로 띄움.
     """
     print(f"DEBUG: open_file_action 호출됨 - {file_data}")
     data_type = file_data.get('data_type', 'FILE')
-    item_id = file_data.get('item_id', 'N/A')
+    item_id = file_data.get('item_id', None)
+
+    if not item_id:
+        messagebox.showerror("오류", "item_id가 없습니다.")
+        return
     
+    # 🎥 비디오 처리
     if 'VIDEO' in data_type.upper():
         print(f"비디오 항목 보기 요청: Item ID {item_id}")
-        
-        # 1. 실제 비디오 파일을 다운로드하거나 경로를 찾습니다.
-        # 🚨 여기에 실제 파일 경로를 가져오는 로직 (예: 서버에서 다운로드)이 필요합니다.
-        # file_path = download_video_file(item_id) 
-        
-        # 예시: 임시 파일 경로
-        file_path = f"/temp/videos/{item_id}.mp4" 
 
+        # 1. 메타데이터 조회
+        video_meta_list, error_msg = fetch_video_metadata_by_item_id(item_id)
+        if error_msg:
+            show_video_player_window(item_id, f"메타데이터 오류: {error_msg}", error=True)
+            return
+        
+        if not video_meta_list:
+            show_video_player_window(item_id, f"Item {item_id}에 대한 메타데이터 없음", error=True)
+            return
+        
+        # 2. file_path 추출 및 보정
+        video_meta = video_meta_list[0]
+        file_path = video_meta.get("file_path")
+
+        if not file_path:
+            show_video_player_window(item_id, f"file_path 필드 없음", error=True)
+            return
+
+        if not os.path.isabs(file_path):
+            project_root = Path(__file__).resolve().parent.parent
+            file_path = os.path.join(project_root, file_path)
+            file_path = os.path.abspath(file_path)
+
+        print(f"DEBUG: 최종 비디오 경로 = {file_path}")
+
+        # 3. 존재 여부 확인 및 재생
         if not os.path.exists(file_path):
-            print(f"DEBUG: 파일 경로가 없습니다. (경로: {file_path})")
-            # 파일을 찾을 수 없거나 다운로드에 실패했을 경우, 새 창을 열어 알립니다.
             show_video_player_window(
-                item_id, 
-                f"오류: 비디오 파일({item_id})을 찾거나 로드할 수 없습니다. \n경로: {file_path}", 
+                item_id,
+                f"❌ 비디오 파일을 찾을 수 없습니다.\n경로: {file_path}",
                 error=True
             )
-            # 2. 가장 간단한 방법: OS의 기본 비디오 플레이어 실행 (추천)
-            # try:
-            #     os.startfile(file_path) # Windows
-            # except AttributeError:
-            #     subprocess.call(['open', file_path]) # macOS
-            # except Exception as e:
-            #     print(f"외부 플레이어 실행 실패: {e}")
-            return
-            
-        # 3. GUI 내부에 비디오 플레이어 창을 띄웁니다.
-        show_video_player_window(item_id, file_path)
-    
+        else:
+            if os.path.exists(file_path):
+                play_video_external(file_path)  # ✅ 외부 플레이어 실
+            else:
+                show_video_player_window(item_id, f"파일 없음: {file_path}", error=True)
+
     else:
         print(f"일반 파일 항목 보기 요청: Item ID {item_id}")
-        # 기타 파일 처리 로직 (예: 이미지 보기, 문서 열기 등)
-        
+        messagebox.showinfo("알림", f"일반 파일 유형입니다.\nItem ID: {item_id}")
 
-def show_video_player_window(item_id, content_info, error=False):
-    """CTk Toplevel 창에 비디오 플레이어 Placeholder를 표시합니다."""
-    
-    # 1. 새 Toplevel 창 생성
+def play_video_external(file_path):
+    try:
+        if platform.system() == "Windows":
+            os.startfile(file_path)
+        elif platform.system() == "Darwin":
+            subprocess.call(["open", file_path])  # macOS
+        else:
+            subprocess.call(["xdg-open", file_path])  # Linux
+    except Exception as e:
+        messagebox.showerror("실행 오류", f"외부 플레이어 실행 실패\n{e}")      
+
+def show_video_player_window(item_id, file_path, error=False):
     video_window = ctk.CTkToplevel()
     video_window.title(f"비디오 뷰어 - Item ID: {item_id}")
     video_window.geometry("800x600")
-    
-    # 2. 레이블 표시
-    ctk.CTkLabel(
-        video_window,
-        text=f"비디오 재생기 (Item ID: {item_id})",
-        font=ctk.CTkFont(size=18, weight="bold")
-    ).pack(pady=10)
 
-    # 3. 내용 표시
+    ctk.CTkLabel(video_window, text=f"Item ID: {item_id}", font=("", 16)).pack(pady=10)
+
     if error:
-        color = "red"
-        text = content_info
+        ctk.CTkLabel(video_window, text=file_path, text_color="red").pack()
     else:
-        color = "green"
-        text = f"✅ 비디오 로드 준비 완료\n\n파일 경로/정보: {content_info}\n\n" \
-               "여기에 비디오 플레이어 위젯(예: ffpyplayer, OpenCV)을 삽입해야 합니다."
-        
-    ctk.CTkLabel(
-        video_window,
-        text=text,
-        text_color=color,
-        font=("", 12),
-        justify="left"
-    ).pack(padx=20, pady=20, fill="both", expand=True)
+        label = tk.Label(video_window)  # 일반 tkinter 사용
+        label.pack()
+        player = tkvideo(file_path, label, loop=1, size=(800, 500))
+        player.play()
 
-    # 4. 닫기 버튼
-    ctk.CTkButton(
-        video_window,
-        text="닫기",
-        command=video_window.destroy
-    ).pack(pady=10)
-    
-    video_window.transient(video_window.master) # 메인 창 위에 유지
-    video_window.grab_set() # 모달처럼 작동
+    ctk.CTkButton(video_window, text="닫기", command=video_window.destroy).pack(pady=10)
 
 def process_items(items):
     """로드된 전체 항목을 설문과 파일로 분류하여 각 영역에 표시합니다."""
