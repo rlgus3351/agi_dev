@@ -159,3 +159,24 @@ class MDSAnswerValueUpdate(BaseModel):
 
 class MDSAnswerValueUpdateRequest(BaseModel):
     answers: List[MDSAnswerValueUpdate]
+
+
+class DataValidationCreate(BaseModel):
+    patient_id: Optional[UUID]
+    item_id: int
+    validation_method: Optional[str]
+    validation_description: Optional[str]
+    validation_datetime: Optional[datetime]
+
+# ▶ 조회용
+class DataValidation(DataValidationCreate):
+    validation_id: int
+
+    class Config:
+        orm_mode = True
+
+# ▶ 수정용
+class DataValidationUpdate(BaseModel):
+    validation_method: Optional[str]
+    validation_description: Optional[str]
+    validation_datetime: Optional[datetime]
