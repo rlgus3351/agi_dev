@@ -5,6 +5,9 @@ import os
 import tkinter.filedialog as filedialog
 from datetime import datetime
 from typing import Union
+from typing import Optional
+from api.schemas import Item
+
 from api.form_api import (
     MDS_QUESTION_MAPPING,
     transform_to_api_format,
@@ -19,7 +22,7 @@ JSON_FILE = os.path.abspath(os.path.join(CURRENT_DIR, '..', 'form', 'mobility.js
 
 
 class HealthSurveyForm(ctk.CTkFrame):
-    def __init__(self, parent, patient_id, json_file=JSON_FILE, initial_data=None, on_close_callback=None, **kwargs):
+    def __init__(self, parent, patient_id, json_file=JSON_FILE, initial_data=None, item_data: Union[dict, Item, None] = None, on_close_callback=None, **kwargs):
         super().__init__(parent, **kwargs)
         self.json_file = json_file
         self.patient_id = patient_id
@@ -27,7 +30,26 @@ class HealthSurveyForm(ctk.CTkFrame):
         if initial_data:
             print("초기 데이터:", initial_data)
         self.initial_data = initial_data or []
-        self.mode = "EDIT" if initial_data else "INSERT"
+        self.item_data = item_data
+        is_item_updated = False
+        
+        
+        if self.item_data:
+            # Item 데이터가 딕셔너리일 경우를 기본으로 가정하고 .get()으로 접근
+            if isinstance(self.item_data, dict):
+                is_item_updated = self.item_data.get('is_updated', False)
+            else:
+                # Item이 Pydantic 객체일 경우를 대비하여 getattr() 사용
+                is_item_updated = getattr(self.item_data, 'is_updated', False)
+
+
+        # 🚨 모드 결정 로직: VIEW 모드 진입 조건
+        if not self.initial_data:
+            self.mode = "INSERT" # 답변 데이터 없음 (새로 Item 생성해야 함)
+        elif is_item_updated: 
+            self.mode = "VIEW"    # Item은 있으나 is_updated가 True (수정 불가)
+        else:
+            self.mode = "EDIT"    # Item은 있으나 is_updated가 False/None (최초 등록 후 수정 가능)
         self.widgets = {}
         self.data_vars = {}
         self.scrollable_frame = None
@@ -81,9 +103,17 @@ class HealthSurveyForm(ctk.CTkFrame):
                 row = self._create_widget(frame, item, row)
 
         # 🔸 모드별 버튼 텍스트 + 색상 구분
-        btn_text = "데이터 수정" if self.mode == "EDIT" else "데이터 저장"
-        btn_color = "orange" if self.mode == "EDIT" else "#1E90FF"
-        hover_color = "darkorange" if self.mode == "EDIT" else "#0B61A4"
+        if self.mode == "VIEW":
+            # VIEW 모드일 경우, 버튼을 '데이터 보기' 텍스트로 변경하고 비활성화/제거
+            btn_text = "데이터 보기 (수정 불가)"
+            btn_color = "gray"
+            hover_color = "gray"
+            state = "disabled" # 버튼 비활성화
+
+        else: # INSERT 또는 EDIT 모드
+            btn_text = "데이터 수정" if self.mode == "EDIT" else "데이터 저장"
+            btn_color = "orange" if self.mode == "EDIT" else "#1E90FF"
+            hover_color = "darkorange" if self.mode == "EDIT" else "#0B61A4"
 
         # 🔸 버튼 생성
         self.submit_btn = ctk.CTkButton(
@@ -215,7 +245,13 @@ class HealthSurveyForm(ctk.CTkFrame):
                 a["answer_value"] = str(a.get("answer_value", "")).strip()
 
             # ✅ 서버 요청
-            success, err = call_api_to_save_data(self.patient_id, answers)
+            item_id = create_new_item_and_get_id(self.patient_id)
+            if not item_id:
+                CTkMessagebox(title="API 오류", message="Item 생성 실패", icon="cancel")
+                return
+
+            success, err = call_api_to_save_data(item_id, answers)
+            
 
             if success:
                 # ✅ 성공 메시지 → 창 닫기 여부

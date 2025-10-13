@@ -1,7 +1,9 @@
 import customtkinter as ctk
 import tkinter as tk
+from tkinter import ttk 
 import sys
 import os
+import shutil
 from datetime import datetime
 from tkinter import messagebox, filedialog
 import requests
@@ -12,6 +14,8 @@ import time
 # ✅ sys.path 수정
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
+OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output", "video")  # ⬅️ 원하는 위치로 정확히 대응됨
+
 sys.path.append(PROJECT_ROOT)
 
 from api.patient_api import add_patient, delete_patient, fetch_patients
@@ -81,7 +85,7 @@ ctk.set_default_color_theme("dark-blue")
 
 root = ctk.CTk()
 root.title("파킨슨병 입력 프로그램")
-root.geometry("1100x700")
+root.geometry("1100x900")
 
 root.grid_rowconfigure(0, weight=1)
 root.grid_rowconfigure(1, weight=1)
@@ -214,7 +218,7 @@ def show_survey_items(survey_items):
         ).pack(pady=20)
         
 
-        return # 항목이 없으므로 여기서 함수 종료
+        
     else:
         ctk.CTkLabel(
             score_frame,
@@ -275,11 +279,11 @@ def show_survey_items(survey_items):
             # 2. 버튼 영역
             if has_data:
                 button_text = "수정"
-                button_command = lambda data=item: open_survey_form(data)
+                button_command = lambda item_data=item: open_survey_form(item_data)
                 button_color = "#357ABD" # 파란색 (수정)
             else:
                 button_text = "입력"
-                button_command = lambda data=item: open_survey_form(data) # 새 입력
+                button_command = lambda item_data=item: open_survey_form(item_data)
                 button_color = "#4CAF50" # 녹색 (입력)
                 
             ctk.CTkButton(
@@ -292,19 +296,20 @@ def show_survey_items(survey_items):
                 height=40 # 버튼 높이를 조금 키워 보기 좋게 조정
             ).grid(row=0, column=1, padx=5, pady=5)
 
-        new_item_data = {
-            'data_category': 'PD', 
-            'data_type': 'MDS-UPDRS Part 3', # 초기 입력 시 사용할 설문 유형
-            'seq': 1 # 최초 항목이므로 1로 지정 (저장 시 백엔드에서 시퀀스 부여/업데이트가 필요할 수 있음)
-        }
+    new_item_data = {
+        'data_category': 'PD', 
+        'data_type': 'MDS-UPDRS Part 3', # 초기 입력 시 사용할 설문 유형
+        'seq': 1 # 최초 항목이므로 1로 지정 (저장 시 백엔드에서 시퀀스 부여/업데이트가 필요할 수 있음)
+    }
         
-        ctk.CTkButton(
-            score_frame,
-            text="➕ 새 설문 항목 등록 및 입력",
-            command=lambda data=new_item_data: open_survey_form(data),
-            fg_color="#007BFF",
-            hover_color="#0056b3"
-        ).pack(pady=(5, 20))
+    ctk.CTkButton(
+        score_frame,
+        text="➕ 새 설문 항목 등록 및 입력",
+        command=lambda data=new_item_data: open_survey_form(data),
+        fg_color="#007BFF",
+        hover_color="#0056b3"
+    ).pack(pady=(5, 20))
+    return # 항목이 없으므로 여기서 함수 종료
 
 
 def open_survey_form(item_data=None):
@@ -354,7 +359,7 @@ def open_survey_form(item_data=None):
     initials = selected_patient.get("patient_initials", "?")
     item_type = item_data.get('data_type', 'N/A') if item_data else 'N/A'
 
-    ctk.CTkLabel(modal, text=f"📝 운동성 설문지 - {initials} ({item_type})", font=("", 16, "bold")).pack(pady=10)
+    ctk.CTkLabel(modal, text=f"📝 운동성 설문지 - {initials} ({item_type})", font=("", 16)).pack(pady=10)
 
     # ✅ 콜백 전달: 폼이 닫힐 때 환자 데이터 다시 불러오기
     def reload_after_close():
@@ -368,6 +373,7 @@ def open_survey_form(item_data=None):
         json_file=JSON_FILE,
         patient_id=patient_uuid,
         initial_data=initial_form_data,
+        item_data=item_data,         # 👈 Item 전체 데이터 전달
         on_close_callback=reload_after_close  # ✅ 여기 추가
     )
     survey_form.pack(fill="both", expand=True, padx=10, pady=10)
@@ -383,25 +389,124 @@ def open_survey_form(item_data=None):
     modal.protocol("WM_DELETE_WINDOW", on_modal_close)
 
 
-def show_file_items(file_items):
-    """upload_frame에 파일 항목 목록을 표시합니다."""
-    # upload_list_frame만 비우고 버튼은 유지
+def clear_file_items_area():
+    """
+    upload_list_frame (파일 항목 목록 영역) 내부의 모든 위젯을 제거하여 초기화합니다.
+    """
+    # upload_list_frame이 전역 변수인 경우 (클래스 메소드가 아닐 때)
+    # global upload_list_frame # 필요하다면 주석 해제
+    
+    # 🚨 해당 프레임 안에 있는 모든 자식 위젯을 찾아 파괴(destroy)합니다.
     for widget in upload_list_frame.winfo_children():
         widget.destroy()
 
+def show_file_items(parent_frame, file_items):
+    """upload_list_frame에 파일 항목 목록을 표시합니다. (설문 항목과 동일한 CTkFrame 기반)"""
+    
+    # 1. 항목 표시 영역 초기화
+    for widget in parent_frame.winfo_children():
+        widget.destroy()
+
+    if not selected_patient:
+        # 환자 미선택 시 메시지 표시 (필요하다면)
+        ctk.CTkLabel(parent_frame, text="환자를 선택해주세요.", font=("", 14, "italic"), text_color="gray").pack(pady=20)
+        return
+    
     if not file_items:
-        ctk.CTkLabel(upload_list_frame, text="업로드된 파일 항목이 없습니다.", text_color="gray").pack(pady=10)
+        ctk.CTkLabel(
+            parent_frame,
+            text="수집된 파일 데이터(영상 등)가 없습니다.",
+            font=("", 13, "italic"),
+            text_color="gray"
+        ).pack(pady=20)
+        return
     else:
-        ctk.CTkLabel(upload_list_frame, text="🎥 파일 항목 목록", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(5, 0))
+        ctk.CTkLabel(
+            parent_frame,
+            text="📁 수집 파일 항목 목록",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(5, 0))
+
+        list_container = ctk.CTkFrame(parent_frame, fg_color="transparent")
+        list_container.pack(fill="x", padx=10, pady=5)
         
-        # 파일 목록 표시
-        for idx, item in enumerate(file_items):
-            label_text = f"[{item['data_category']}] {item['data_type']} (순서: {item['seq']})"
-            ctk.CTkLabel(upload_list_frame, text=label_text, anchor="w").pack(fill="x", padx=10, pady=2)
+        # --- 파일 항목 반복 및 UI 생성 ---
+        for item in file_items:
+            # 💡 파일 항목은 기본적으로 데이터가 '존재'한다고 간주하며, 버튼은 '보기/다운로드'로 설정합니다.
+            
+            row_frame = ctk.CTkFrame(list_container, fg_color="transparent")
+            row_frame.pack(fill="x", pady=5)
+            row_frame.grid_columnconfigure(0, weight=1) # 항목/요약 영역 확장
+            row_frame.grid_columnconfigure(1, weight=0) # 버튼 영역 고정
 
-    # 파일 업로드 버튼 (새 항목)은 upload_frame 바깥에 위치하거나, 여기서는 그냥 유지
-    # ctk.CTkButton(upload_frame, text="📤 파일 업로드 (새 항목)", command=open_upload_modal).pack(pady=5)
+            # 1. 날짜 포맷팅
+            collected_at_raw = item.get('collected_at', '')
+            formatted_date = ""
+            if collected_at_raw:
+                try:
+                    # ISO 8601 형식 문자열을 datetime 객체로 변환 (datetime 임포트 필요)
+                    from datetime import datetime
+                    dt_obj = datetime.strptime(collected_at_raw.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+                    formatted_date = dt_obj.strftime(" (%Y-%m-%d %H:%M:%S)")
+                except Exception:
+                    formatted_date = " (날짜 오류)"
+            
+            # 2. 항목 이름 (첫 번째 줄)
+            # data_type이 'VIDEO'인 경우, 상세 설명이나 파일 크기 등을 표시할 수 있습니다.
+            item_name = f"[{item['data_category']}]{item['data_type']}\n저장 일자:{formatted_date}"
+            
+            item_summary_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+            item_summary_frame.grid(row=0, column=0, sticky="ew", padx=(5, 10))
 
+            ctk.CTkLabel(
+                item_summary_frame,
+                text=item_name,
+                anchor="w",
+                justify="left",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                # 파일 항목은 항상 데이터가 있다고 가정하여 굵게 표시
+            ).pack(fill="x", anchor="w")
+            
+            
+            # 3. 요약 정보 (두 번째 줄) - 파일 정보 요약
+            is_updated_text = "수정됨" if item.get('is_updated', False) else "최초 등록"
+            summary_text = f"상태: {is_updated_text} | 설명: {item.get('description', '설명 없음')}"
+            
+            ctk.CTkLabel(
+                item_summary_frame,
+                text=f"요약: {summary_text}",
+                anchor="w",
+                justify="left",
+                font=ctk.CTkFont(size=11, slant="italic"),
+                text_color="gray"
+            ).pack(fill="x", anchor="w")
+
+            # 4. 버튼 영역
+            button_text = "보기"
+            button_color = "#357ABD" # 파란색
+            
+            # 🚨 open_file_action 함수는 파일 다운로드, 열기 등을 처리해야 합니다.
+            # 이 함수는 별도로 정의되어 있어야 합니다.
+            button_command = lambda file_data=item: open_file_action(file_data)
+                
+            ctk.CTkButton(
+                row_frame,
+                text=button_text,
+                command=button_command,
+                fg_color=button_color,
+                hover_color=button_color,
+                width=100,
+                height=40
+            ).grid(row=0, column=1, padx=5, pady=5)
+            
+        # 5. 새 파일 등록 버튼 (선택 사항, 필요하다면)
+        ctk.CTkButton(
+            parent_frame,
+            text="➕ 새 파일 항목 등록 및 업로드",
+            command=lambda: open_upload_modal(), # 🚨 open_file_upload_dialog 함수 정의 필요
+            fg_color="#007BFF",
+            hover_color="#0056b3"
+        ).pack(pady=(5, 20))
 
 # ---------------- 파일 업로드 모달 ----------------
 def open_upload_modal():
@@ -455,8 +560,8 @@ def open_upload_modal():
 
     # ---------------- 3. 메타데이터 등록 함수 (파일 업로드 없음) ----------------
     def start_metadata_registration():
-        # 1. 유효성 검사 및 등록할 메타데이터 리스트 준비
-        meta_data_to_register = []
+    # 1. 유효성 검사 및 등록할 메타데이터 리스트 준비
+        files_to_process_meta = []
         target_patient_id = selected_patient['patient_id']
         uploader_name = "GUI_User" # uploader 필드용 상수
 
@@ -465,79 +570,116 @@ def open_upload_modal():
 
             if local_path and os.path.isfile(local_path):
                 file_name = os.path.basename(local_path)
-                
-                # 🚨 수정: file_size_mb를 계산하고 numeric(10,2)에 맞게 문자열로 변환
+                _, file_ext = os.path.splitext(file_name)
+                file_ext = file_ext.lower().lstrip('.') # 예: "mp4"
+
+                # file_size_mb는 문자열로 유지 (백엔드에서 처리한다고 가정)
                 file_size_mb_float = os.path.getsize(local_path) / (1024 * 1024)
                 file_size_mb_str = f"{file_size_mb_float:.2f}" 
 
-                # 💡 get_video_metadata 호출
                 video_info = get_video_metadata(local_path) 
-                
-                simulated_server_path = f"output/video/{target_patient_id}/{file_name}" 
+
+                simulated_server_path = os.path.join(OUTPUT_DIR, str(target_patient_id), file_name)
                 video_label = VIDEO_SLOTS[i]
-                note_content = f"슬롯 {i}번 ({video_label}) 영상 메타데이터 등록 (로컬 경로: {local_path})"
+
+                # is_anonymized는 요청대로 숫자(0 또는 1)로 유지
                 is_anon = 1 if i in [1, 2, 3] else 0
-                # 메타데이터 등록을 위한 데이터 생성 (누락된 필수 필드 추가)
-                meta_data_to_register.append({
-                    
-                    # 📌 필수 필드 1: item_id는 아래에서 추가
-                    "video_label": video_label,
+
+                # 메타데이터 등록을 위한 데이터 생성 (item_id는 아래에서 추가)
+                files_to_process_meta.append({
+                    # 💡 파일 복사를 위해 로컬 경로를 잠시 추가
+                    "local_source_path": local_path, 
+                    "slot_index": i,
                     "file_name": file_name,
-                    
                     "file_path": simulated_server_path, 
-                    # 🚨 수정 적용: 문자열로 변환된 file_size_mb 사용
-                    "file_size_mb": file_size_mb_str,
-                    
-                    # 🚨 수정 적용: 정수형으로 변환 (소수점 버림)
+                    "file_ext": file_ext,
+                    # 문자열 타입으로 유지
+                    "file_size_mb": file_size_mb_str, 
                     "duration_seconds": int(video_info.get("duration_seconds", 0.0)),
                     "resolution": video_info.get("resolution", "N/A"),
-                    # 🚨 수정 적용: 정수형으로 변환 (소수점 버림)
                     "frame_rate": int(video_info.get("frame_rate", 0.0)),
-                    # 🚨 수정 적용: False 대신 정수 0 사용
-                    "is_anonymized": is_anon
-                    
-                   
+                    # 숫자 타입으로 유지 (요청대로)
+                    "is_anonymized": is_anon 
                 })
 
-        if not meta_data_to_register:
+        if not files_to_process_meta:
             CTkMessagebox(title="경고", message="등록할 영상 파일을 하나 이상 선택해주세요.", icon="warning")
             return
 
         # 2. 로딩 팝업 실행
         def register_video_metadata():
+            success_count = 0
+            failure_messages = []
+
             # --- A. Item의 다음 seq 계산 ---
             current_items = items_cache.get(target_patient_id, [])
-            
             max_seq = 0
             for item in current_items:
-                # 'VIDEO' 또는 'FILE' 관련 항목의 최대 시퀀스 번호 찾기
-                if 'VIDEO' in item.get('data_type', '').upper() or 'FILE' in item.get('data_category', '').upper():
+                # 'VIDEO' 항목의 최대 시퀀스 번호 찾기
+                if 'VIDEO' in item.get('data_type', '').upper():
                     max_seq = max(max_seq, item.get('seq', 0))
 
-            next_seq = max_seq + 1
-            
-            # --- B. Item 등록 (비디오 전용 새 항목) ---
-            # 🚨 Item 등록 API 호출 시, 백엔드에서 트랜잭션 커밋이 제대로 이루어져야 함.
-            item_id_or_error = create_new_item_and_get_id(target_patient_id, next_seq)
+            next_seq_start = max_seq + 1
 
-            if not isinstance(item_id_or_error, int):
-                return False, f"새 수집 항목 등록 실패: {item_id_or_error[1]}"
-            
-            item_id = item_id_or_error
-            
-            # 🚨 item_id를 등록할 모든 영상 데이터에 일괄 추가 (FK 오류 방지)
-            for meta in meta_data_to_register:
-                meta['item_id'] = item_id
-            
-            # --- C. 비디오 메타데이터 DB 등록 ---
-            success, msg = call_api_to_save_video_metadata(item_id, meta_data_to_register)
-            
-            if success:
-                return True, (f"{len(meta_data_to_register)}개 영상 메타데이터 DB 등록 완료.\n"
-                                f"새 항목 ID: {item_id} (Seq: {next_seq})\n"
-                                f"파일 경로는 'output/video' 기준으로 등록되었습니다.")
+            # 🚨 핵심 수정: 리스트를 순회하면서 Item 등록, 파일 복사 및 Video Meta 등록을 각각 실행 
+            for index, meta_data in enumerate(files_to_process_meta):
+                current_seq = next_seq_start + index
+
+                # 내부 처리용 필드 추출 (등록 데이터에서 제거)
+                slot_index = meta_data.pop('slot_index')
+                local_source_path = meta_data.pop('local_source_path')
+
+                slot_label = VIDEO_SLOTS[slot_index]
+                target_file_path = meta_data['file_path'] # DB에 저장될 경로를 타겟 경로로 사용
+
+                # -------------------------- 1. 실제 파일 복사 실행 --------------------------
+                try:
+                    target_dir = os.path.dirname(target_file_path)
+                    os.makedirs(target_dir, exist_ok=True)
+                    shutil.copy2(local_source_path, target_file_path)
+
+                except Exception as e:
+                    failure_messages.append(f"[{slot_label}] ❌ 파일 복사 실패: {str(e)}")
+                    continue # 파일 복사 실패 시 DB 등록 건너뛰기
+
+
+                # -------------------------- 2. 새 수집 항목(Item) 등록 (Item 1건 생성) --------------------------
+                item_id_or_error = create_new_item_and_get_id(target_patient_id, current_seq)
+
+                if not isinstance(item_id_or_error, int):
+                    failure_messages.append(f"[{slot_label}] ❌ Item 등록 실패 (Seq: {current_seq}): {item_id_or_error[1]}")
+                    # Item 등록 실패 시, 복사된 파일은 삭제 (롤백)
+                    if os.path.exists(target_file_path):
+                         os.remove(target_file_path) 
+                    continue
+                
+                item_id = item_id_or_error
+
+                # -------------------------- 3. 비디오 메타데이터 DB 등록 (Meta 1건 등록) --------------------------
+                meta_data['item_id'] = item_id 
+
+                # API가 List[VideoMetaCreate]를 받으므로, 현재 메타데이터 1건을 리스트로 감싸서 전달
+                success, msg = call_api_to_save_video_metadata(item_id, [meta_data]) 
+
+                if success:
+                    success_count += 1
+                else:
+                    failure_messages.append(f"[{slot_label}] ❌ Meta 등록 실패 (Item ID: {item_id}): {msg}")
+                    # DB 등록 실패 시, Item과 파일 모두 롤백 (Item은 삭제 API가 필요하지만, 일단 파일만 삭제)
+                    if os.path.exists(target_file_path):
+                         os.remove(target_file_path) 
+
+
+            # ---------------- 최종 결과 반환 ----------------
+            total_count = len(files_to_process_meta)
+            if success_count == total_count:
+                return True, (f"✅ 총 {success_count}개 영상이 각각 새로운 Item으로 DB 등록 및 파일 복사 완료.\n"
+                                f"Item Seq: {next_seq_start}부터 {next_seq_start + success_count - 1}까지.")
+            elif success_count > 0:
+                return False, (f"⚠️ {success_count}개 성공, {total_count - success_count}개 실패.\n"
+                                "실패 상세:\n" + "\n".join(failure_messages))
             else:
-                return False, f"메타데이터 DB 등록 실패: {msg}"
+                return False, "❌ 모든 영상 등록에 실패했습니다.\n" + "\n".join(failure_messages)
 
 
         # 3. 비동기 실행 및 콜백 처리
@@ -547,8 +689,9 @@ def open_upload_modal():
             if success:
                 CTkMessagebox(title="성공", message=message, icon="check")
             else:
-                CTkMessagebox(title="오류", message=message, icon="cancel")
-            
+                # 실패 메시지에 오류 아이콘 추가
+                CTkMessagebox(title="오류", message=message, icon="cancel", option_focus=1)
+
             # 등록 완료 후 항목 목록 새로고침
             pid = target_patient_id
             if pid in items_cache:
@@ -561,7 +704,7 @@ def open_upload_modal():
             parent_frame=root,
             fetch_function=register_video_metadata,
             callback=after_registration,
-            loading_text="영상 메타데이터 DB 등록 중..."
+            loading_text=f"Item 등록, 파일 복사 및 메타데이터 DB 등록 중... (총 {len(files_to_process_meta)}건)"
         )
     
     # ---------------- 4. 등록 실행 버튼 ----------------
@@ -590,7 +733,8 @@ def on_select_patient(patient, row_frame):
 
     # 항목 표시 영역을 초기화하고 로딩 상태 표시
     show_empty_state() # 설문 영역 초기화
-    show_file_items([]) # 파일 영역 초기화
+    clear_file_items_area()
+    # show_file_items([]) # 파일 영역 초기화
 
     # 로딩 표시 (임시)
     loading_label_survey = ctk.CTkLabel(score_frame, text="수집 항목 로드 중...", text_color="blue")
@@ -661,31 +805,135 @@ def on_select_patient(patient, row_frame):
             else:
                 messagebox.showerror("에러", f"수집 항목 로딩 실패:\n{items_to_process}")
                 show_survey_items([])
-                show_file_items([])
+                show_file_items(upload_list_frame, [])
                 
         root.after(0, update_ui)
 
     threading.Thread(target=fetch_in_background, daemon=True).start()
 
+def open_file_action(file_data):
+    """
+    파일 항목의 '보기' 버튼 클릭 시 호출됩니다.
+    주로 비디오 파일을 처리합니다.
+    """
+    print(f"DEBUG: open_file_action 호출됨 - {file_data}")
+    data_type = file_data.get('data_type', 'FILE')
+    item_id = file_data.get('item_id', 'N/A')
+    
+    if 'VIDEO' in data_type.upper():
+        print(f"비디오 항목 보기 요청: Item ID {item_id}")
+        
+        # 1. 실제 비디오 파일을 다운로드하거나 경로를 찾습니다.
+        # 🚨 여기에 실제 파일 경로를 가져오는 로직 (예: 서버에서 다운로드)이 필요합니다.
+        # file_path = download_video_file(item_id) 
+        
+        # 예시: 임시 파일 경로
+        file_path = f"/temp/videos/{item_id}.mp4" 
 
-def process_items(result):
+        if not os.path.exists(file_path):
+            print(f"DEBUG: 파일 경로가 없습니다. (경로: {file_path})")
+            # 파일을 찾을 수 없거나 다운로드에 실패했을 경우, 새 창을 열어 알립니다.
+            show_video_player_window(
+                item_id, 
+                f"오류: 비디오 파일({item_id})을 찾거나 로드할 수 없습니다. \n경로: {file_path}", 
+                error=True
+            )
+            # 2. 가장 간단한 방법: OS의 기본 비디오 플레이어 실행 (추천)
+            # try:
+            #     os.startfile(file_path) # Windows
+            # except AttributeError:
+            #     subprocess.call(['open', file_path]) # macOS
+            # except Exception as e:
+            #     print(f"외부 플레이어 실행 실패: {e}")
+            return
+            
+        # 3. GUI 내부에 비디오 플레이어 창을 띄웁니다.
+        show_video_player_window(item_id, file_path)
+    
+    else:
+        print(f"일반 파일 항목 보기 요청: Item ID {item_id}")
+        # 기타 파일 처리 로직 (예: 이미지 보기, 문서 열기 등)
+        
+
+def show_video_player_window(item_id, content_info, error=False):
+    """CTk Toplevel 창에 비디오 플레이어 Placeholder를 표시합니다."""
+    
+    # 1. 새 Toplevel 창 생성
+    video_window = ctk.CTkToplevel()
+    video_window.title(f"비디오 뷰어 - Item ID: {item_id}")
+    video_window.geometry("800x600")
+    
+    # 2. 레이블 표시
+    ctk.CTkLabel(
+        video_window,
+        text=f"비디오 재생기 (Item ID: {item_id})",
+        font=ctk.CTkFont(size=18, weight="bold")
+    ).pack(pady=10)
+
+    # 3. 내용 표시
+    if error:
+        color = "red"
+        text = content_info
+    else:
+        color = "green"
+        text = f"✅ 비디오 로드 준비 완료\n\n파일 경로/정보: {content_info}\n\n" \
+               "여기에 비디오 플레이어 위젯(예: ffpyplayer, OpenCV)을 삽입해야 합니다."
+        
+    ctk.CTkLabel(
+        video_window,
+        text=text,
+        text_color=color,
+        font=("", 12),
+        justify="left"
+    ).pack(padx=20, pady=20, fill="both", expand=True)
+
+    # 4. 닫기 버튼
+    ctk.CTkButton(
+        video_window,
+        text="닫기",
+        command=video_window.destroy
+    ).pack(pady=10)
+    
+    video_window.transient(video_window.master) # 메인 창 위에 유지
+    video_window.grab_set() # 모달처럼 작동
+
+def process_items(items):
     """로드된 전체 항목을 설문과 파일로 분류하여 각 영역에 표시합니다."""
     survey_items = []
     file_items = []
     
     # 설문 항목은 data_type이 'MDS-UPDRS PART 3'이거나 'FORM'이 포함된 경우로 가정합니다.
     # 파일 항목은 그 외의 모든 항목으로 간주합니다.
-    for item in result:
+    for item in items:
+        # data_category와 data_type을 대문자로 변환하여 비교 준비
+        data_category = item.get('data_category', '').upper()
         data_type = item.get('data_type', '').upper()
         
-        # 유연한 분류 로직: data_category 또는 data_type에 'FORM', 'MDS-UPDRS', 'SURVEY'가 포함되면 설문으로 분류
-        if 'FORM' in item.get('data_category', '').upper() or 'MDS-UPDRS' in data_type or 'SURVEY' in data_type:
+        # 1. 설문 항목 분류 기준 설정:
+        # 'FORM', 'MDS-UPDRS', 'SURVEY'를 포함하는 항목은 설문으로 간주
+        is_survey_item = (
+            'FORM' in data_category 
+            or 'MDS-UPDRS' in data_type 
+            or 'SURVEY' in data_type
+        )
+        
+        # 2. VIDEO 항목 분류:
+        # VIDEO 타입이거나, 설문 항목이 아닌 나머지 항목은 파일 항목으로 간주
+        is_file_item = (
+            'VIDEO' in data_type 
+            or not is_survey_item # 설문 외 모든 항목 (이미지, 기타 파일 등)
+        )
+        
+        if is_survey_item:
+            # 설문 항목: score_frame에 표시
             survey_items.append(item)
-        else:
+        elif is_file_item:
+            # 파일/미디어 항목 (VIDEO 포함): upload_list_frame에 표시
+            print(is_file_item)
             file_items.append(item)
     
     show_survey_items(survey_items)
-    show_file_items(file_items)
+    show_file_items(upload_list_frame, file_items)  # ✅ 수정
 
 # ---------------- 환자 목록 테이블 로드 ----------------
 def load_patients_table():
@@ -884,8 +1132,8 @@ lbl_video_title.pack(pady=10)
 # 파일 업로드 버튼을 묶는 프레임
 upload_button_frame = ctk.CTkFrame(frame_video)
 upload_button_frame.pack(pady=5)
-ctk.CTkButton(upload_button_frame, text="📤 파일 업로드", width=150, command=open_upload_modal).pack(side="left", padx=10)
-ctk.CTkButton(upload_button_frame, text="새 항목 등록", width=150).pack(side="left", padx=10)
+ctk.CTkButton(upload_button_frame, text="📤 파일 업로드",font=("",16) ,width=150, command=open_upload_modal).pack(side="left", padx=10)
+ctk.CTkButton(upload_button_frame, text="새 항목 등록", font=("",16) ,width=150).pack(side="left", padx=10)
 
 
 # 파일 목록을 표시할 프레임 (show_file_items에서 관리)
@@ -896,6 +1144,6 @@ upload_list_frame.pack(fill="x", pady=5)
 # 프로그램 시작 시 상태 설정
 show_empty_state()
 # 파일 영역 초기 상태 설정
-show_file_items([]) 
+# show_file_items([])
 root.after(100, init_program)
 root.mainloop()

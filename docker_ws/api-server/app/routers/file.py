@@ -25,9 +25,9 @@ def read_videos_by_item_id(item_id: int, db: Session = Depends(get_db)):
     """
     query = text("""
         SELECT 
-            video_metadata_id, item_id, video_label, file_name, file_path, 
-            file_size_mb, duration_seconds, resolution, frame_rate, codec,
-            is_anonymized, upload_at, uploader, note
+            video_metadata_id, item_id, file_name, file_path, file_ext,
+            file_size_mb, duration_seconds, resolution, frame_rate,
+            is_anonymized, created_ts
         FROM tb_Video_Metadata
         WHERE item_id = :item_id
         ORDER BY upload_at DESC
@@ -59,13 +59,13 @@ def create_video_metadata(
 
     query = text("""
         INSERT INTO tb_Video_Metadata (
-            item_id, video_label, file_name, file_path, file_size_mb, 
-            duration_seconds, resolution, frame_rate, codec, 
-            is_anonymized, uploader, note
+            item_id,  file_name, file_path, file_size_mb, file_ext,
+            duration_seconds, resolution, frame_rate,
+            is_anonymized
         ) VALUES (
-            :item_id, :video_label, :file_name, :file_path, :file_size_mb, 
-            :duration_seconds, :resolution, :frame_rate, :codec, 
-            :is_anonymized, :uploader, :note
+            :item_id, :file_name, :file_path, :file_size_mb, :file_ext,
+            :duration_seconds, :resolution, :frame_rate,
+            :is_anonymized
         )
     """)
 
@@ -74,17 +74,14 @@ def create_video_metadata(
         for video in request.videos:
             params_list.append({
                 "item_id": item_id,
-                "video_label": video.video_label,
                 "file_name": video.file_name,
                 "file_path": video.file_path,
                 "file_size_mb": video.file_size_mb,
                 "duration_seconds": video.duration_seconds,
                 "resolution": video.resolution,
                 "frame_rate": video.frame_rate,
-                "codec": video.codec,
-                "is_anonymized": bool(video.is_anonymized),
-                "uploader": video.uploader,
-                "note": video.note
+                "file_ext": video.file_ext,
+                "is_anonymized": video.is_anonymized,
             })
 
         db.execute(query, params_list)
@@ -117,17 +114,14 @@ def update_video_metadata(
     query = text("""
         UPDATE tb_Video_Metadata
         SET 
-            video_label = COALESCE(:video_label, video_label),
             file_name = COALESCE(:file_name, file_name),
             file_path = COALESCE(:file_path, file_path),
             file_size_mb = COALESCE(:file_size_mb, file_size_mb),
             duration_seconds = COALESCE(:duration_seconds, duration_seconds),
             resolution = COALESCE(:resolution, resolution),
             frame_rate = COALESCE(:frame_rate, frame_rate),
-            codec = COALESCE(:codec, codec),
             is_anonymized = COALESCE(:is_anonymized, is_anonymized),
-            uploader = COALESCE(:uploader, uploader),
-            note = COALESCE(:note, note)
+            file_ext = COALESCE(:file_ext, file_ext)
         WHERE video_metadata_id = :video_metadata_id
     """)
 

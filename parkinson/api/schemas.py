@@ -51,11 +51,10 @@ class Item(BaseModel):
     collected_at: Optional[datetime]
     is_deleted: Optional[bool] = False
     deleted_at: Optional[datetime] = None
-    is_updated: Optional[bool] = None
-    updated_at: Optional[datetime] = None
+    is_updated:Optional[bool]
+    updated_at:Optional[datetime]
     class Config:
         orm_mode = True
-        
 # 여러 항목 등록용 DTO
 class ItemsCreate(BaseModel):
     items: List[ItemCreate]
