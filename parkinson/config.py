@@ -11,6 +11,7 @@ config.py
 # ============================================================
 
 # FastAPI 서버 기본 주소
+# API_HOST = "localhost"
 API_HOST = "localhost"
 API_PORT = 30000
 
