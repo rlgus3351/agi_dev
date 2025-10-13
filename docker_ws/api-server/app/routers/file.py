@@ -27,7 +27,7 @@ def read_videos_by_item_id(item_id: int, db: Session = Depends(get_db)):
         SELECT 
             video_metadata_id, item_id, file_name, file_path, file_ext,
             file_size_mb, duration_seconds, resolution, frame_rate,
-            is_anonymized, created_ts
+            is_anonymized, created_ts, shooting_ts
         FROM tb_Video_Metadata
         WHERE item_id = :item_id
     """)
@@ -60,11 +60,11 @@ def create_video_metadata(
         INSERT INTO tb_Video_Metadata (
             item_id,  file_name, file_path, file_size_mb, file_ext,
             duration_seconds, resolution, frame_rate,
-            is_anonymized
+            is_anonymized, shooting_ts
         ) VALUES (
             :item_id, :file_name, :file_path, :file_size_mb, :file_ext,
             :duration_seconds, :resolution, :frame_rate,
-            :is_anonymized
+            :is_anonymized, :shooting_ts
         )
     """)
 
@@ -81,6 +81,7 @@ def create_video_metadata(
                 "frame_rate": video.frame_rate,
                 "file_ext": video.file_ext,
                 "is_anonymized": video.is_anonymized,
+                "shooting_ts": video.shooting_ts
             })
 
         db.execute(query, params_list)
@@ -120,7 +121,8 @@ def update_video_metadata(
             resolution = COALESCE(:resolution, resolution),
             frame_rate = COALESCE(:frame_rate, frame_rate),
             is_anonymized = COALESCE(:is_anonymized, is_anonymized),
-            file_ext = COALESCE(:file_ext, file_ext)
+            file_ext = COALESCE(:file_ext, file_ext),
+            shooting_ts = COALESCE(:shooting_ts, shooting_ts)
         WHERE video_metadata_id = :video_metadata_id
     """)
 

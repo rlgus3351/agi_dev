@@ -307,7 +307,7 @@ def show_survey_items(survey_items):
         
     ctk.CTkButton(
         score_frame,
-        text="➕ 새 설문 항목 등록 및 입력",
+        text="➕ 새 설문 항목 등록 및 입력",font=("", 13),
         command=lambda data=new_item_data: open_survey_form(data),
         fg_color="#007BFF",
         hover_color="#0056b3"
@@ -505,7 +505,7 @@ def show_file_items(parent_frame, file_items):
         # 5. 새 파일 등록 버튼 (선택 사항, 필요하다면)
         ctk.CTkButton(
             parent_frame,
-            text="➕ 새 파일 항목 등록 및 업로드",
+            text="➕ 새 파일 항목 등록 및 업로드", font=("", 13),
             command=lambda: open_upload_modal(), # 🚨 open_file_upload_dialog 함수 정의 필요
             fg_color="#007BFF",
             hover_color="#0056b3"
@@ -602,7 +602,8 @@ def open_upload_modal():
                     "resolution": video_info.get("resolution", "N/A"),
                     "frame_rate": int(video_info.get("frame_rate", 0.0)),
                     # 숫자 타입으로 유지 (요청대로)
-                    "is_anonymized": is_anon 
+                    "is_anonymized": is_anon,
+                    "shooting_ts": video_info.get("creation_time")
                 })
 
         if not files_to_process_meta:
@@ -1137,7 +1138,6 @@ lbl_video_title.pack(pady=10)
 upload_button_frame = ctk.CTkFrame(frame_video)
 upload_button_frame.pack(pady=5)
 ctk.CTkButton(upload_button_frame, text="📤 파일 업로드",font=("",16) ,width=150, command=open_upload_modal).pack(side="left", padx=10)
-ctk.CTkButton(upload_button_frame, text="새 항목 등록", font=("",16) ,width=150).pack(side="left", padx=10)
 
 
 # 파일 목록을 표시할 프레임 (show_file_items에서 관리)

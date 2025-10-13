@@ -91,6 +91,7 @@ class VideoMetaCreate(BaseModel):
     resolution: Optional[str]              # 해상도 (예: '1920x1080')
     frame_rate: Optional[int]              # FPS
     is_anonymized: Optional[int]           # 비식별화 여부
+    shooting_ts: Optional[datetime]
 
 # ▶ 비디오 메타데이터 조회용
 class VideoMeta(BaseModel):
@@ -105,6 +106,7 @@ class VideoMeta(BaseModel):
     frame_rate: Optional[int]
     is_anonymized: Optional[int]
     created_ts: Optional[datetime]
+    shooting_ts: Optional[datetime]
 
 
     class Config:
@@ -126,6 +128,7 @@ class VideoMetaUpdate(BaseModel):
     resolution: Optional[str]           # 해상도 (예: 1920x1080)
     frame_rate: Optional[int]            # 프레임 레이트 (fps)
     is_anonymized: Optional[int]         # 비식별화 여부 (0:N, 1:Y)
+    shooting_ts: Optional[datetime]
 
 class MDSFormCreate(BaseModel):
     # item_id: Optional[int] # 경로나 통합 제출에서 처리되므로 제거

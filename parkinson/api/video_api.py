@@ -22,7 +22,7 @@ def create_new_item_and_get_id(target_patient_id: str, seq: int) -> Union[int, T
     }
     try:
         response = requests.post(url, json=item_payload, timeout=5) 
-        response.raise_for_status() 
+        response.raise_for_status()
 
         item_data = response.json()
         return item_data.get("item_id")
