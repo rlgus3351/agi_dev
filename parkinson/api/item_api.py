@@ -95,17 +95,24 @@ def add_items(patient_id: str, items: list):
 # ---------------------------------------------------
 # 4. 특정 환자의 수집 항목 삭제 (소프트 삭제)
 # ---------------------------------------------------
-def delete_item(item_id: int):
+def delete_survey_item(item_data: dict):
     """
-    특정 환자의 수집 항목 삭제 (소프트 삭제)
+    설문 항목 삭제 API 호출 (FastAPI /items/{item_id} DELETE)
+    Soft delete 방식
     """
     try:
-        url = f"{ITEMS_BASE_URL}{item_id}"  # DELETE /items/{item_id}
-        res = requests.delete(url)
-        res.raise_for_status()
-        messagebox.showinfo("성공", "항목 삭제 완료!")
-        return True
-    except requests.RequestException as e:
-        messagebox.showerror("에러", f"항목 삭제 실패: {e}")
-        return False
+        item_id = item_data.get("item_id")
+        if not item_id:
+            return False, "item_id가 없습니다."
 
+        url = f"{ITEMS_BASE_URL}{item_id}"
+        res = requests.delete(url)
+        if res.status_code == 404:
+            return False, "해당 항목을 찾을 수 없습니다."
+        res.raise_for_status()
+        return True, "삭제 완료"
+
+    except requests.RequestException as e:
+        return False, f"요청 실패: {e}"
+    except Exception as e:
+        return False, f"에러: {e}"
