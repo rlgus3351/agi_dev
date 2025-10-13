@@ -165,3 +165,21 @@ INSERT INTO tb_Questionnaire_Questions (questionnaire_type, question_number, que
 ('운동성 검사 (MDS-UPDRS Part III)', 16, '움직일 때 손의 떨림 (R, L)'),
 ('운동성 검사 (MDS-UPDRS Part III)', 17, '가만 있을 때 떨림의 폭 (RA, LA, RL, LL, LJ)'),
 ('운동성 검사 (MDS-UPDRS Part III)', 18, '가만 있을 때 떨림의 지속시간');
+
+
+
+CREATE TABLE tb_Parkinson_Stage (
+    stage_id SERIAL PRIMARY KEY,
+    patient_id uuid,
+    stage_value DECIMAL(2, 1),                           -- 0, 1, 1.5, 2, 2.5, ...
+    stage_description TEXT,                              -- 질병의 증후가 없음, 일측성 상하지 장애 등
+    assessment_date DATE,                                -- 단계가 평가된 날짜
+    FOREIGN KEY (patient_id) REFERENCES tb_Patient_Info(patient_id)
+);
+COMMENT ON TABLE tb_Parkinson_Stage IS '파킨슨병 단계 테이블';
+COMMENT ON COLUMN tb_Parkinson_Stage.stage_id IS '단계 ID';
+COMMENT ON COLUMN tb_Parkinson_Stage.patient_id IS '환자 ID';
+COMMENT ON COLUMN tb_Parkinson_Stage.stage_value IS '단계 값';
+COMMENT ON COLUMN tb_Parkinson_Stage.stage_description IS '단계 설명';
+COMMENT ON COLUMN tb_Parkinson_Stage.assessment_date IS '평가 날짜';
+GRANT DELETE, INSERT, UPDATE, SELECT ON TABLE dev_kkh.tb_Questionnaire_Questions TO pd_dep_collector;
