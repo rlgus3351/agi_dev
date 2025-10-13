@@ -519,75 +519,56 @@ def open_upload_modal():
 
     # ---------------- 1. 모달 기본 설정 ----------------
     modal = ctk.CTkToplevel(root)
-    modal.title(f"{selected_patient.get('patient_initials', '')} 환자 영상 메타데이터 등록/수정") # 제목 변경
-    modal.geometry("550x450") # 사이즈 조정
+    modal.title(f"{selected_patient.get('patient_initials', '')} 환자 영상 메타데이터 등록/수정")
+    modal.geometry("550x480")
     modal.grab_set()
 
-    # 업로드할 영상 목록 및 슬롯별 고정 시퀀스
     VIDEO_SLOTS = {
         1: "1번 영상 (A)",
         2: "2번 영상 (B)",
         3: "3번 영상 (C)",
         4: "손글씨 영상 (D)",
     }
-    # 💡 핵심: 슬롯별 고정 시퀀스 번호. Item seq는 이 번호를 따릅니다.
-    SLOT_TO_SEQ = {
-        1: 1,
-        2: 2,
-        3: 3,
-        4: 4, 
-    }
 
-    # file_paths 변수는 Entry의 값을 관리
+    SLOT_TO_SEQ = {1: 1, 2: 2, 3: 3, 4: 4}
+
     file_paths = {i: ctk.StringVar(value="") for i in VIDEO_SLOTS}
-    
     main_frame = ctk.CTkFrame(modal)
     main_frame.pack(fill="both", expand=True, padx=20, pady=10)
 
-    # 💡 기존 등록된 Item 정보 조회 (Item ID와 file_path를 미리 캐싱)
+    # ---------------- 기존 Item 정보 조회 ----------------
     current_items = items_cache.get(selected_patient['patient_id'], [])
-    seq_to_item = {} # seq: {item_id: 123, file_path: "..."}
+    seq_to_item = {}
     for item in current_items:
         if item.get("data_type", "").upper() == "VIDEO":
             seq = item.get("seq")
             if seq:
-                # Item ID와 기존 file_path를 저장
                 seq_to_item[seq] = {
                     "item_id": item.get("item_id"),
                     "file_path": item.get("file_path", "")
                 }
-    
-    # ---------------- 2. 파일 선택 위젯 생성 (등록/수정 반영) ----------------
+
+    # ---------------- 2. 파일 선택 위젯 ----------------
     for i, label_text in VIDEO_SLOTS.items():
         row_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
         row_frame.pack(fill="x", pady=5)
         row_frame.grid_columnconfigure(1, weight=1)
 
         seq_for_slot = SLOT_TO_SEQ.get(i)
-        existing_info = seq_to_item.get(seq_for_slot) # 기존 Item 정보
-
-        # 👉 초기 값 지정: 기존에 파일이 등록되어 있으면 경로를 보여주고, 아니면 빈 값
-        # 서버 경로를 로컬 Entry에 보여주면 안 되므로, 등록 여부만 파악하고 Entry는 빈 값으로 시작하는 게 더 안전합니다.
-        # 여기서는 편의상 "등록됨"으로 표시하거나 비워둡니다.
-        # file_paths[i].set("") # 항상 비어있게 하고, '수정' 버튼으로 유도
-        
+        existing_info = seq_to_item.get(seq_for_slot)
         entry_placeholder = existing_info.get("file_path") if existing_info else "선택된 파일 없음 (미등록)"
         file_paths[i].set("")
-        
-        # 👉 라벨
+
         label_text_full = f"🎥 (Seq {seq_for_slot}) {label_text}:"
         ctk.CTkLabel(row_frame, text=label_text_full, width=150, anchor="w").grid(row=0, column=0, padx=5, sticky="w")
 
-        # 👉 Entry
-        entry = ctk.CTkEntry(row_frame, textvariable=file_paths[i], placeholder_text=entry_placeholder, width=220)
-        # Entry는 실제 로컬 경로만 받기 때문에, 기존 서버 경로는 Placeholder로만 보여줍니다.
+        entry = ctk.CTkEntry(row_frame, textvariable=file_paths[i], placeholder_text=entry_placeholder, width=230)
         entry.grid(row=0, column=1, padx=5, sticky="ew")
 
-        # 👉 '찾기' 버튼
         def create_browse_command(var):
             return lambda: browse_file_to_var(var)
 
-        ctk.CTkButton(row_frame, text="로컬 파일 선택", width=120, 
+        ctk.CTkButton(row_frame, text="로컬 파일 선택", width=120,
                       command=create_browse_command(file_paths[i])).grid(row=0, column=2, padx=5)
 
     def browse_file_to_var(var: ctk.StringVar):
@@ -597,44 +578,47 @@ def open_upload_modal():
         if file_path:
             var.set(file_path)
 
-    # ---------------- 3. 메타데이터 등록/수정 함수 ----------------
+    # ---------------- 3. 메타데이터 등록/수정 ----------------
     def start_metadata_registration():
         files_to_process_meta = []
         target_patient_id = selected_patient['patient_id']
-        
-        # 💡 유효성 검사 및 등록/수정할 메타데이터 리스트 준비 (기존과 동일)
+
         for i, var in file_paths.items():
             local_path = var.get().strip()
-            # 로컬 경로가 입력되었고, 실제 파일인 경우에만 처리 리스트에 추가
-            if not local_path or not os.path.isfile(local_path):
-                continue
-            
-            # --- 메타데이터 추출 (기존과 동일) ---
-            file_name = os.path.basename(local_path)
-            _, file_ext = os.path.splitext(file_name)
-            file_ext = file_ext.lower().lstrip('.')
-
-            file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
-            file_size_mb_str = f"{file_size_mb:.2f}"
-
-            video_info = get_video_metadata(local_path)
-
-            # 서버 파일 경로는 새로운 파일명으로 생성
-            simulated_server_path = os.path.join(OUTPUT_DIR, str(target_patient_id), file_name)
-            current_seq = SLOT_TO_SEQ.get(i, 99) 
-            is_anon = 1 if i in [1, 2, 3] else 0
-            
-            # 💡 기존 Item ID 조회
-            existing_info = seq_to_item.get(current_seq, {})
+            seq = SLOT_TO_SEQ.get(i)
+            existing_info = seq_to_item.get(seq, {})
             existing_item_id = existing_info.get("item_id")
 
+            # 새 파일도 없고, 기존 Item도 없으면 건너뜀
+            if not local_path and not existing_item_id:
+                continue
+
+            # 새 파일 선택된 경우
+            if local_path and os.path.isfile(local_path):
+                file_name = os.path.basename(local_path)
+                _, file_ext = os.path.splitext(file_name)
+                file_ext = file_ext.lower().lstrip('.')
+                file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
+                file_size_mb_str = f"{file_size_mb:.2f}"
+                video_info = get_video_metadata(local_path)
+                simulated_server_path = os.path.join(OUTPUT_DIR, str(target_patient_id), file_name)
+            else:
+                # 기존 파일 유지
+                file_name = os.path.basename(existing_info.get("file_path", f"default_{seq}.mp4"))
+                file_ext = file_name.split(".")[-1]
+                file_size_mb_str = "0.00"
+                video_info = {}
+                simulated_server_path = existing_info.get("file_path", "N/A")
+
+            is_anon = 1 if i in [1, 2, 3] else 0
+
             files_to_process_meta.append({
-                "local_source_path": local_path,
+                "local_source_path": local_path or None,
                 "slot_index": i,
-                "seq": current_seq,
-                "existing_item_id": existing_item_id, # 💡 Item ID를 포함하여 전달
+                "seq": seq,
+                "existing_item_id": existing_item_id,
                 "file_name": file_name,
-                "file_path": simulated_server_path, # 새 파일이 복사될 경로
+                "file_path": simulated_server_path,
                 "file_ext": file_ext,
                 "file_size_mb": file_size_mb_str,
                 "duration_seconds": int(video_info.get("duration_seconds", 0.0)),
@@ -645,11 +629,10 @@ def open_upload_modal():
             })
 
         if not files_to_process_meta:
-            CTkMessagebox(title="경고", message="선택된 로컬 영상 파일이 없거나 유효하지 않습니다.", icon="warning")
+            CTkMessagebox(title="경고", message="선택된 로컬 영상 파일이 없거나 기존 데이터가 없습니다.", icon="warning")
             return
 
-        # ---------------- 백그라운드 등록/수정 로직 ----------------
-        # open_upload_modal 내의 register_video_metadata 함수 (수정된 부분)
+        # ---------------- 등록/수정 실행 ----------------
         def register_video_metadata():
             success_count = 0
             failure_messages = []
@@ -657,102 +640,77 @@ def open_upload_modal():
             for meta_data in files_to_process_meta:
                 slot_index = meta_data.pop('slot_index')
                 local_source_path = meta_data.pop('local_source_path')
-                current_seq = meta_data.pop('seq')
-                existing_item_id = meta_data.pop('existing_item_id') 
+                seq = meta_data.pop('seq')
+                existing_item_id = meta_data.pop('existing_item_id')
                 slot_label = VIDEO_SLOTS[slot_index]
                 target_file_path = meta_data['file_path']
-
                 action = "등록"
                 item_id = None
 
-                # -------------------------- 1. Item 등록/Item ID 설정 및 Video Meta ID 확보 --------------------------
                 if existing_item_id:
                     action = "수정"
                     item_id = existing_item_id
-                    video_meta_id_to_update = None # 💡 수정할 Video Meta ID 변수 초기화
+                    video_meta_id_to_update = None
 
-  
-                    # ✅ 기존 Video Meta 데이터 조회 및 ID 확보
-                    # Item ID로 Video Meta 목록을 조회합니다.
                     meta_list, error_msg = fetch_video_metadata_by_item_id(item_id)
                     if error_msg:
-                         failure_messages.append(f"[{slot_label}] ❌ Video Meta 조회 실패: {error_msg}")
-                         continue
-                     
+                        failure_messages.append(f"[{slot_label}] ❌ Meta 조회 실패: {error_msg}")
+                        continue
+
                     if meta_list and meta_list[0].get('video_metadata_id'):
-                        # Video Meta는 1개만 연결된다고 가정하고 첫 번째 ID를 사용
-                        video_meta_id_to_update = meta_list[0].get('video_metadata_id')
-                        # 💡 페이로드에 video_metadata_id 추가
-                        meta_data['video_metadata_id'] = video_meta_id_to_update
+                        meta_data['video_metadata_id'] = meta_list[0]['video_metadata_id']
                     else:
-                         # Video Meta는 있지만 ID가 없거나 데이터가 없는 경우, 등록 모드로 전환하여 새 Meta를 만듭니다.
-                         action = "재등록"
+                        action = "재등록"
 
                 else:
-                    # 💡 등록 모드: 새로운 Item 생성
-                    action = "등록"
-                    item_id_or_error = create_new_item_and_get_id(target_patient_id, current_seq)
+                    item_id_or_error = create_new_item_and_get_id(target_patient_id, seq)
                     if not isinstance(item_id_or_error, int):
-                        failure_messages.append(f"[{slot_label}] ❌ Item 등록 실패 (Seq: {current_seq}): {item_id_or_error[1]}")
+                        failure_messages.append(f"[{slot_label}] ❌ Item 등록 실패: {item_id_or_error[1]}")
                         continue
                     item_id = item_id_or_error
 
-                # -------------------------- 2. 파일 복사 및 기존 파일 삭제 --------------------------
-                # (기존 로직 유지)
+                # 파일 복사/삭제
                 try:
-                    # 💡 수정인 경우, 기존 파일을 삭제해야 합니다.
-                    if existing_item_id:
-                        old_file_path = seq_to_item.get(current_seq, {}).get("file_path")
-                        # NOTE: seq_to_item에 file_path가 item_id 조회 시 포함되어 있어야 함
-                        if old_file_path and os.path.exists(old_file_path) and old_file_path != target_file_path:
-                            os.remove(old_file_path)
-                            print(f"Old file deleted: {old_file_path}")
-
-                    target_dir = os.path.dirname(target_file_path)
-                    os.makedirs(target_dir, exist_ok=True)
-                    shutil.copy2(local_source_path, target_file_path) # 새 파일 복사
-
+                    if local_source_path and os.path.isfile(local_source_path):
+                        if existing_item_id:
+                            old_path = seq_to_item.get(seq, {}).get("file_path")
+                            if old_path and os.path.exists(old_path) and old_path != target_file_path:
+                                os.remove(old_path)
+                        os.makedirs(os.path.dirname(target_file_path), exist_ok=True)
+                        shutil.copy2(local_source_path, target_file_path)
                 except Exception as e:
-                    failure_messages.append(f"[{slot_label}] ❌ 파일 복사/삭제 실패: {e}")
+                    failure_messages.append(f"[{slot_label}] ❌ 파일 복사 실패: {e}")
                     continue
-                
-                # -------------------------- 3. 비디오 메타데이터 DB 등록/수정 --------------------------
+
                 meta_data['item_id'] = item_id
 
                 if action == "수정":
-                    # ✅ 수정 API 호출: video_metadata_id를 포함한 딕셔너리를 리스트로 감싸서 전달
-                    #    (form_api.py의 call_api_to_update_video_metadata 정의에 맞춤)
-                    success, msg = call_api_to_update_video_metadata([meta_data]) 
+                    success, msg = call_api_to_update_video_metadata([meta_data])
                 else:
-                    # ✅ 등록/재등록 API 호출
-                    success, msg = call_api_to_save_video_metadata(item_id, [meta_data]) 
+                    success, msg = call_api_to_save_video_metadata(item_id, [meta_data])
 
                 if success:
                     success_count += 1
                 else:
-                    failure_messages.append(f"[{slot_label}] ❌ Meta {action} 실패 (ID: {item_id}): {msg}")
-                    # DB 등록/수정 실패 시, 복사된 파일 삭제
+                    failure_messages.append(f"[{slot_label}] ❌ Meta {action} 실패: {msg}")
                     if os.path.exists(target_file_path):
                         os.remove(target_file_path)
 
-                # -------------------------- 4. 결과 반환 --------------------------
-                total = len(files_to_process_meta)
-                # ... (결과 반환 로직은 기존과 동일) ...
-                if success_count == total:
-                    return True, f"✅ 총 {success_count}개 영상이 성공적으로 {action}되었습니다."
-                elif success_count > 0:
-                    return False, f"⚠️ {success_count}/{total} 성공, {total - success_count}개 실패.\n" + "\n".join(failure_messages)
-                else:
-                    return False, "❌ 모든 영상 등록/수정 실패\n" + "\n".join(failure_messages)
-        
-        # ---------------- 4. 로딩 팝업 실행 ----------------
+            total = len(files_to_process_meta)
+            if success_count == total:
+                return True, f"✅ 총 {success_count}개 영상이 성공적으로 처리되었습니다."
+            elif success_count > 0:
+                return False, f"⚠️ {success_count}/{total} 성공, 일부 실패:\n" + "\n".join(failure_messages)
+            else:
+                return False, "❌ 모든 영상 등록/수정 실패\n" + "\n".join(failure_messages)
+
+        # ---------------- 결과 처리 ----------------
         def after_registration(result):
             modal.destroy()
             success, message = result
             icon = "check" if success else "cancel"
             CTkMessagebox(title="결과", message=message, icon=icon)
-            
-            # 등록/수정 완료 후 Item 목록 새로고침
+
             pid = target_patient_id
             if pid in items_cache:
                 del items_cache[pid]
@@ -769,11 +727,12 @@ def open_upload_modal():
     # ---------------- 5. 등록 버튼 ----------------
     ctk.CTkButton(
         modal,
-        text="💾 메타데이터 DB 등록/수정 실행", # 버튼 텍스트 변경
+        text="💾 메타데이터 DB 등록/수정 실행",
         command=start_metadata_registration,
         fg_color="#34A853",
         hover_color="#2C8E47"
     ).pack(pady=20)
+
 
 
 # ---------------- 환자 선택 및 항목 로드 로직 ----------------
