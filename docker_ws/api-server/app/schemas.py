@@ -136,7 +136,6 @@ class VideoMetaUpdate(BaseModel):
 
 class DataProcessingVideoMetaUpdate(BaseModel):
     video_metadata_id: int # 👈 이 필드를 추가해야 함
-    needs_anonymization: Optional[bool]
     is_anonymized: Optional[bool]
     anonymized_ts: Optional[datetime]
 
@@ -190,3 +189,20 @@ class DataValidationUpdate(BaseModel):
     validation_method: Optional[str]
     validation_description: Optional[str]
     validation_datetime: Optional[datetime]
+
+
+class PreprocessingCreate(BaseModel):
+    item_id: int
+    data_category: str
+    original_file_path: str
+    json_file_path: str
+    encrypted_file_path: str
+    processing_started_at: datetime
+    processing_ended_at: datetime
+    processing_duration_sec: float
+    total_frames: int
+    encrypted_frames: int
+    detected_face_frames: int
+    success_rate: float
+    preprocessing_type: str
+    description: Optional[str]

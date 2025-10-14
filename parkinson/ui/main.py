@@ -614,17 +614,24 @@ def open_upload_modal():
 
             # 새 파일 선택된 경우
             if local_path and os.path.isfile(local_path):
-                file_name = os.path.basename(local_path)
-                _, file_ext = os.path.splitext(file_name)
+                # 원본 파일 정보 추출
+                orig_file_name = os.path.basename(local_path)
+                _, file_ext = os.path.splitext(orig_file_name)
                 file_ext = file_ext.lower().lstrip('.')
                 file_size_mb = os.path.getsize(local_path) / (1024 * 1024)
                 file_size_mb_str = f"{file_size_mb:.2f}"
                 video_info = get_video_metadata(local_path)
+            
+                # ✅ 파일 이름을 "환자UUID_seq.확장자" 형식으로 생성
+                file_name = f"{target_patient_id}_{seq}.{file_ext}"
+            
+                # 서버 업로드용 경로 구성
                 simulated_server_path = os.path.join(OUTPUT_DIR, str(target_patient_id), file_name)
             else:
                 # 기존 파일 유지
-                file_name = os.path.basename(existing_info.get("file_path", f"default_{seq}.mp4"))
-                file_ext = file_name.split(".")[-1]
+                existing_file_name = os.path.basename(existing_info.get("file_path", f"default_{seq}.mp4"))
+                file_ext = existing_file_name.split(".")[-1]
+                file_name = f"{target_patient_id}_{seq}.{file_ext}"  # ✅ 기존 것도 동일 형식으로 통일
                 file_size_mb_str = "0.00"
                 video_info = {}
                 simulated_server_path = existing_info.get("file_path", "N/A")

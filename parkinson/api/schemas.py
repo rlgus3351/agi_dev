@@ -51,10 +51,11 @@ class Item(BaseModel):
     collected_at: Optional[datetime]
     is_deleted: Optional[bool] = False
     deleted_at: Optional[datetime] = None
-    is_updated:Optional[bool]
-    updated_at:Optional[datetime]
+    is_updated: Optional[bool] = None
+    updated_at: Optional[datetime] = None
     class Config:
         orm_mode = True
+        
 # 여러 항목 등록용 DTO
 class ItemsCreate(BaseModel):
     items: List[ItemCreate]
@@ -89,7 +90,9 @@ class VideoMetaCreate(BaseModel):
     duration_seconds: Optional[int]        # 길이 (초)
     resolution: Optional[str]              # 해상도 (예: '1920x1080')
     frame_rate: Optional[int]              # FPS
-    is_anonymized: Optional[int]           # 비식별화 여부
+    needs_anonymization: Optional[bool]
+    shooting_ts: Optional[datetime]
+    data_category: Optional[str]
 
 # ▶ 비디오 메타데이터 조회용
 class VideoMeta(BaseModel):
@@ -102,8 +105,12 @@ class VideoMeta(BaseModel):
     duration_seconds: Optional[int]
     resolution: Optional[str]
     frame_rate: Optional[int]
-    is_anonymized: Optional[int]
+    needs_anonymization: Optional[bool]
+    is_anonymized: Optional[bool]
     created_ts: Optional[datetime]
+    shooting_ts: Optional[datetime]
+    anonymized_ts: Optional[datetime]
+    data_category: Optional[str]
 
 
     class Config:
@@ -124,7 +131,13 @@ class VideoMetaUpdate(BaseModel):
     duration_seconds: Optional[int]     # 영상 길이 (초)
     resolution: Optional[str]           # 해상도 (예: 1920x1080)
     frame_rate: Optional[int]            # 프레임 레이트 (fps)
-    is_anonymized: Optional[int]         # 비식별화 여부 (0:N, 1:Y)
+    needs_anonymization: Optional[bool]
+    shooting_ts: Optional[datetime]
+
+class DataProcessingVideoMetaUpdate(BaseModel):
+    video_metadata_id: int # 👈 이 필드를 추가해야 함
+    is_anonymized: Optional[bool]
+    anonymized_ts: Optional[datetime]
 
 class MDSFormCreate(BaseModel):
     # item_id: Optional[int] # 경로나 통합 제출에서 처리되므로 제거
@@ -155,3 +168,24 @@ class MDSAnswerValueUpdate(BaseModel):
 
 class MDSAnswerValueUpdateRequest(BaseModel):
     answers: List[MDSAnswerValueUpdate]
+
+
+class DataValidationCreate(BaseModel):
+    patient_id: Optional[UUID]
+    item_id: int
+    validation_method: Optional[str]
+    validation_description: Optional[str]
+    validation_datetime: Optional[datetime]
+
+# ▶ 조회용
+class DataValidation(DataValidationCreate):
+    validation_id: int
+
+    class Config:
+        orm_mode = True
+
+# ▶ 수정용
+class DataValidationUpdate(BaseModel):
+    validation_method: Optional[str]
+    validation_description: Optional[str]
+    validation_datetime: Optional[datetime]
