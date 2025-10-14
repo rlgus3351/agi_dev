@@ -38,8 +38,6 @@ JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
 
 items_cache = {} # 환자별 수집 항목 캐시
 
-
-print(HEALTH_URL)
 # ---------------- 서버 체크 ----------------
 def check_server_status():
     try:
@@ -1178,10 +1176,9 @@ lbl_video_title = ctk.CTkLabel(frame_video, text="파일 관리", font=("", 16, 
 lbl_video_title.pack(pady=10)
 
 # 파일 업로드 버튼을 묶는 프레임
-upload_button_frame = ctk.CTkFrame(frame_video)
-upload_button_frame.pack(pady=5)
-ctk.CTkButton(upload_button_frame, text="📤 파일 업로드",font=("",16) ,width=150, command=open_upload_modal).pack(side="left", padx=10)
-
+# upload_button_frame = ctk.CTkFrame(frame_video)
+# upload_button_frame.pack(pady=5)
+# ctk.CTkButton(upload_button_frame, text="📤 파일 업로드",font=("",16) ,width=150, command=open_upload_modal).pack(side="left", padx=10)
 
 # 파일 목록을 표시할 프레임 (show_file_items에서 관리)
 upload_list_frame = ctk.CTkFrame(frame_video)

@@ -147,38 +147,84 @@ class HealthSurveyForm(ctk.CTkFrame):
             frame.grid(row=row, column=1, sticky="w", padx=10, pady=10)
 
             for i, opt in enumerate(config.get("options", [])):
-                # ✅ value는 반드시 option 문자열 그대로
-                ctk.CTkRadioButton(frame, text=opt, variable=var, value=opt)\
-                    .grid(row=0, column=i, padx=5)
+                ctk.CTkRadioButton(frame, text=opt, variable=var, value=opt).grid(row=0, column=i, padx=5)
 
-            return row + 1
+            # ✅ 항목 구분선 (밑줄)
+            separator = ctk.CTkFrame(parent, height=4, fg_color="#CCCCCC")
+            separator.grid(row=row + 1, column=0, columnspan=2, sticky="ew", pady=(0, 5))
+            return row + 2  # 다음 항목으로 2줄 이동
 
         # ✅ 숫자 입력 필드
         elif item_type == "input-number":
+            min_val = config.get("min")
+            max_val = config.get("max")
+
+            def validate_range(new_value):
+                if new_value == "":
+                    return True
+                try:
+                    num = float(new_value)
+                    if min_val is not None and num < min_val:
+                        return False
+                    if max_val is not None and num > max_val:
+                        return False
+                    return True
+                except ValueError:
+                    return False
+
+            vcmd = (self.register(validate_range), "%P")
             var = ctk.StringVar(value=self.initial_answers_map.get(str(qnum), ""))
             self.data_vars[item_id] = var
 
-            ctk.CTkLabel(parent, text=question, font=('', 14), justify="left", wraplength=450)\
+            label_text = f"{question} (범위: {min_val}~{max_val})" if min_val is not None and max_val is not None else question
+            ctk.CTkLabel(parent, text=label_text, font=('', 14), justify="left", wraplength=450)\
                 .grid(row=row, column=0, sticky="w", padx=10, pady=10)
-            ctk.CTkEntry(parent, textvariable=var, width=100, validate='key', validatecommand=self.vcmd)\
+            ctk.CTkEntry(parent, textvariable=var, width=100, validate='key', validatecommand=vcmd)\
                 .grid(row=row, column=1, sticky="w", padx=10, pady=10)
-            return row + 1
+
+            # ✅ 항목 구분선 (밑줄)
+            separator = ctk.CTkFrame(parent, height=4, fg_color="#CCCCCC")
+            separator.grid(row=row + 1, column=0, columnspan=2, sticky="ew", pady=(0, 5))
+            return row + 2
 
         # ✅ 양쪽 입력 필드 (grouped-inputs)
         elif item_type == "grouped-inputs":
-            ctk.CTkLabel(parent, text=question, font=('', 14), justify="left", wraplength=450)\
+            min_val = config.get("min")
+            max_val = config.get("max")
+
+            def validate_grouped(new_value):
+                if new_value == "":
+                    return True
+                try:
+                    num = float(new_value)
+                    if min_val is not None and num < min_val:
+                        return False
+                    if max_val is not None and num > max_val:
+                        return False
+                    return True
+                except ValueError:
+                    return False
+
+            vcmd = (self.register(validate_grouped), "%P")
+
+            ctk.CTkLabel(parent, text=f"{question} (범위: {min_val}~{max_val})", font=('', 14), justify="left", wraplength=450)\
                 .grid(row=row, column=0, sticky="w", padx=10, pady=10)
             frame = ctk.CTkFrame(parent)
             frame.grid(row=row, column=1, sticky="w", padx=10, pady=10)
+
             for i, side in enumerate(config.get("sides", [])):
                 sid = f"{item_id}_{side}"
                 key = f"{qnum}_{side}"
                 var = ctk.StringVar(value=self.initial_answers_map.get(key, ""))
                 self.data_vars[sid] = var
                 ctk.CTkLabel(frame, text=side).grid(row=i, column=0, padx=5)
-                ctk.CTkEntry(frame, textvariable=var, width=80, validate='key', validatecommand=self.vcmd)\
+                ctk.CTkEntry(frame, textvariable=var, width=80, validate='key', validatecommand=vcmd)\
                     .grid(row=i, column=1, padx=5)
-            return row + 1
+
+            # ✅ 항목 구분선 (밑줄)
+            separator = ctk.CTkFrame(parent, height=4, fg_color="#CCCCCC")
+            separator.grid(row=row + 1, column=0, columnspan=2, sticky="ew", pady=(0, 5))
+            return row + 2
 
         return row
 
