@@ -1,0 +1,232 @@
+{
+  "운동성 검사": {
+    "sections": [
+      {
+        "header": {
+          "title": "운동성 검사 기초 정보",
+          "description": "환자의 약물 복용 및 검사 환경 정보를 입력해주세요."
+        },
+        "body": [
+          {
+            "id": "a",
+            "question": "증상 치료 목적 약물 복용 여부",
+            "type": "radio",
+            "options": ["예", "아니오"],
+            "required": true
+          },
+          {
+            "id": "b",
+            "question": "환자 임상적 상태 (약물 복용 후)",
+            "type": "radio",
+            "options": ["긍정적", "부정적"],
+            "required": true
+          },
+          {
+            "id": "c",
+            "question": "환자 Levodopa 복용 여부",
+            "type": "radio",
+            "options": ["예", "아니오"],
+            "required": true
+          },
+          {
+            "id": "c1",
+            "question": "마지막 복용 경과 시간 (분)",
+            "type": "input-number",
+            "min": 0,
+            "max": 300,
+            "required": true
+          },
+          {
+            "id": "d",
+            "question": "DYSKINESIA가 검사 결과에 영향을 주었는가?",
+            "type": "radio",
+            "options": ["예", "아니오"],
+            "required": true
+          },
+          {
+            "id": "d1",
+            "question": "검사 도중 dyskinesia 유무",
+            "type": "radio",
+            "options": ["예", "아니오"],
+            "required": true
+          },
+          {
+            "id": "d2",
+            "question": "검사 결과에 영향을 주었는지 여부",
+            "type": "radio",
+            "options": ["예", "아니오"],
+            "required": true
+          },
+          {
+            "id": "e",
+            "question": "Hoehn & Yahr 파킨슨병 진행 단계",
+            "type": "radio",
+            "options": ["0", "1","1.5", "2", "2.5","3", "4", "5"],
+            "required": true
+          }
+        ]
+      },
+      {
+        "header": {
+          "title": "운동 항목별 평가",
+          "description": "0~4점 사이의 점수를 입력해주세요."
+        },
+        "body": [
+          {
+            "id": "1",
+            "question": "말하기",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "2",
+            "question": "얼굴 표정",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "3",
+            "question": "관절의 뻣뻣함",
+            "type": "grouped-inputs",
+            "sides": ["Neck", "RA", "LA", "RL", "LL"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "4",
+            "question": "손가락 부딪치기",
+            "type": "grouped-inputs",
+            "sides": ["L","R"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "5",
+            "question": "손 동작",
+            "type": "grouped-inputs",
+            "sides": ["L","R"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "6",
+            "question": "손 내전/외전 움직임",
+            "type": "grouped-inputs",
+            "sides": ["L","R"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "7",
+            "question": "발가락으로 두드리기",
+            "type": "grouped-inputs",
+            "sides": ["L","R"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "8",
+            "question": "다리 민첩성",
+            "type": "grouped-inputs",
+            "sides": ["L","R"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "9",
+            "question": "의자에서 일어나기",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "10",
+            "question": "걷는 자세",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "11",
+            "question": "걷는 중 몸의 굳어짐",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "12",
+            "question": "자세의 안정",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "13",
+            "question": "자세",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "14",
+            "question": "자연스러운 움직임",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "15",
+            "question": "자세 유지시 손의 떨림",
+            "type": "grouped-inputs",
+            "sides": ["L","R"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "16",
+            "question": "움직일 때 손의 떨림",
+            "type": "grouped-inputs",
+            "sides": ["L","R"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "17",
+            "question": "가만 있을 때 떨림의 폭",
+            "type": "grouped-inputs",
+            "sides": ["RA", "LA", "RL", "LL", "LJ"],
+            "min": 0,
+            "max": 4,
+            "required": true
+          },
+          {
+            "id": "18",
+            "question": "가만 있을 때 떨림의 지속시간",
+            "type": "input-number",
+            "min": 0,
+            "max": 4,
+            "required": true
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  data_validation_app:
+    container_name: data_validation_app
+    build:
+      context: ./data_validation_app
+      dockerfile: Dockerfile
+    image: data_validation_app:latest
+
+    environment:
+      - TZ=Asia/Seoul
+
+    volumes:
+      - ./data_validation_app:/app
+      # 전대 병원 설정(Windows 경로)
+      - "C:/TeamGit/agi_logs/validation:/app/logs"   # ✅ 외부 로그 저장소 연결
+      - "C:/TeamGit/agi_dev/parkinson/output/video:/app/input_videos"  # ✅ 추가!
+
+    command: >
+      bash -c "
+        while true; do
+          LOG_FILE=/app/logs/validation_$$(date +%Y-%m-%d).log &&
+          echo '🚀 Starting Validation Service...' >> $$LOG_FILE &&
+          python main.py >> $$LOG_FILE 2>&1 &&
+          echo '⏸️ Validation finished, waiting 30 minutes...' >> $$LOG_FILE &&
+          sleep 1800;
+        done
+      "
+
+    restart: always
+    tty: true
+
+  data_anonymization_app:
+    container_name: data_anonymization_app
+    build:
+      context: ./data_anonymization_app
+      dockerfile: Dockerfile
+    image: data_anonymization_app:latest
+
+    environment:
+      - TZ=Asia/Seoul
+
+    volumes:
+      - ./data_anonymization_app:/app
+      # 전대 병원 설정(Windows 경로)
+      - "C:/TeamGit/agi_logs/anonymization:/app/logs"   # ✅ 외부 로그 저장소 연결
+      # 전대 병원 설정(Windows 경로)
+      - "C:/TeamGit/agi_dev/parkinson/output/video:/app/input_videos"  # ✅ 추가!
+
+    # ✅ 단일 실행 명령 — main.py 내부에서 자체 루프 + 대기 수행
+    command: >
+      bash -c "
+        LOG_FILE=/app/logs/anonymization_$$(date +%Y-%m-%d).log &&
+        echo '🎥 Starting Anonymization Service...' >> $$LOG_FILE &&
+        python main.py >> $$LOG_FILE 2>&1
+      "
+
+    restart: always
+    tty: true

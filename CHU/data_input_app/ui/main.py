@@ -31,7 +31,7 @@ from api.video_api import create_new_item_and_get_id, call_api_to_save_video_met
 from form.survey import HealthSurveyForm
 from utils.videometa import get_video_metadata
 
-from config import API_URL, INSTITUTION , HEALTH_URL
+from config import API_URL, INSTITUTION , HEALTH_URL,LOCAL_UPLOAD_DIR
 
 JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
 JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
@@ -422,111 +422,111 @@ def clear_file_items_area():
 
 def show_file_items(parent_frame, file_items):
     """upload_list_frame에 파일 항목 목록을 표시합니다. (설문 항목과 동일한 CTkFrame 기반)"""
-    # 1️⃣ 영역 초기화
+    
+    # 1. 항목 표시 영역 초기화
     for widget in parent_frame.winfo_children():
         widget.destroy()
 
-    # 2️⃣ 환자 미선택 시
     if not selected_patient:
-        ctk.CTkLabel(
-            parent_frame,
-            text="환자를 선택해주세요.",
-            font=("", 14, "italic"),
-            text_color="gray"
-        ).pack(pady=20)
+        # 환자 미선택 시 메시지 표시 (필요하다면)
+        ctk.CTkLabel(parent_frame, text="환자를 선택해주세요.", font=("", 14, "italic"), text_color="gray").pack(pady=20)
         return
-
-    # 3️⃣ 파일 데이터 없을 때
+    
     if not file_items:
         ctk.CTkLabel(
             parent_frame,
-            text="📂 수집된 파일 데이터(영상 등)가 없습니다.",
+            text="수집된 파일 데이터(영상 등)가 없습니다.",
             font=("", 13, "italic"),
             text_color="gray"
-        ).pack(pady=(30, 10))
+        ).pack(pady=20)
+        return
+    else:
+        ctk.CTkLabel(
+            parent_frame,
+            text="📁 수집 파일 항목 목록",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(5, 0))
 
-        # 업로드 버튼 (파일 없을 때도 항상 표시)
+        list_container = ctk.CTkFrame(parent_frame, fg_color="transparent")
+        list_container.pack(fill="x", padx=10, pady=5)
+        
+        # --- 파일 항목 반복 및 UI 생성 ---
+        for item in file_items:
+            # 💡 파일 항목은 기본적으로 데이터가 '존재'한다고 간주하며, 버튼은 '보기/다운로드'로 설정합니다.
+            
+            row_frame = ctk.CTkFrame(list_container, fg_color="transparent")
+            row_frame.pack(fill="x", pady=5)
+            row_frame.grid_columnconfigure(0, weight=1) # 항목/요약 영역 확장
+            row_frame.grid_columnconfigure(1, weight=0) # 버튼 영역 고정
+
+            # 1. 날짜 포맷팅
+            collected_at_raw = item.get('collected_at', '')
+            formatted_date = ""
+            if collected_at_raw:
+                try:
+                    # ISO 8601 형식 문자열을 datetime 객체로 변환 (datetime 임포트 필요)
+                    from datetime import datetime
+                    dt_obj = datetime.strptime(collected_at_raw.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+                    formatted_date = dt_obj.strftime(" (%Y-%m-%d %H:%M:%S)")
+                except Exception:
+                    formatted_date = " (날짜 오류)"
+            
+            # 2. 항목 이름 (첫 번째 줄)
+            # data_type이 'VIDEO'인 경우, 상세 설명이나 파일 크기 등을 표시할 수 있습니다.
+            item_name = f"[{item['data_category']}]{item['data_type']}\n저장 일자:{formatted_date}"
+            
+            item_summary_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
+            item_summary_frame.grid(row=0, column=0, sticky="ew", padx=(5, 10))
+
+            ctk.CTkLabel(
+                item_summary_frame,
+                text=item_name,
+                anchor="w",
+                justify="left",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                # 파일 항목은 항상 데이터가 있다고 가정하여 굵게 표시
+            ).pack(fill="x", anchor="w")
+            
+            
+            # 3. 요약 정보 (두 번째 줄) - 파일 정보 요약
+            is_updated_text = "수정됨" if item.get('is_updated', False) else "최초 등록"
+            summary_text = f"상태: {is_updated_text} | 설명: {item.get('description', '설명 없음')}"
+            
+            ctk.CTkLabel(
+                item_summary_frame,
+                text=f"요약: {summary_text}",
+                anchor="w",
+                justify="left",
+                font=ctk.CTkFont(size=11, slant="italic"),
+                text_color="gray"
+            ).pack(fill="x", anchor="w")
+
+            # 4. 버튼 영역
+            button_text = "보기"
+            button_color = "#357ABD" # 파란색
+            
+            # 🚨 open_file_action 함수는 파일 다운로드, 열기 등을 처리해야 합니다.
+            # 이 함수는 별도로 정의되어 있어야 합니다.
+            button_command = lambda file_data=item: open_file_action(file_data)
+                
+            ctk.CTkButton(
+                row_frame,
+                text=button_text,
+                command=button_command,
+                fg_color=button_color,
+                hover_color=button_color,
+                width=100,
+                height=40
+            ).grid(row=0, column=1, padx=5, pady=5)
+            
+        # 5. 새 파일 등록 버튼 (선택 사항, 필요하다면)
         ctk.CTkButton(
             parent_frame,
-            text="➕ 새 파일 항목 등록 및 업로드",
-            font=("", 13, "bold"),
-            command=open_upload_modal,
+            text="➕ 새 파일 항목 등록 및 업로드", font=("", 13),
+            command=lambda: open_upload_modal(), # 🚨 open_file_upload_dialog 함수 정의 필요
             fg_color="#007BFF",
             hover_color="#0056b3"
         ).pack(pady=(5, 20))
-        return
-
-    # 4️⃣ 파일 데이터가 있을 때
-    ctk.CTkLabel(
-        parent_frame,
-        text="📁 수집 파일 항목 목록",
-        font=ctk.CTkFont(size=14, weight="bold")
-    ).pack(pady=(5, 0))
-
-    list_container = ctk.CTkFrame(parent_frame, fg_color="transparent")
-    list_container.pack(fill="x", padx=10, pady=5)
-
-    for item in file_items:
-        row_frame = ctk.CTkFrame(list_container, fg_color="transparent")
-        row_frame.pack(fill="x", pady=5)
-        row_frame.grid_columnconfigure(0, weight=1)
-        row_frame.grid_columnconfigure(1, weight=0)
-
-        # 날짜 포맷팅
-        collected_at_raw = item.get('collected_at', '')
-        formatted_date = ""
-        if collected_at_raw:
-            try:
-                from datetime import datetime
-                dt_obj = datetime.strptime(collected_at_raw.split('.')[0], "%Y-%m-%dT%H:%M:%S")
-                formatted_date = dt_obj.strftime(" (%Y-%m-%d %H:%M:%S)")
-            except Exception:
-                formatted_date = " (날짜 오류)"
-
-        # 항목 이름 및 요약
-        item_name = f"[{item['data_category']}] {item['data_type']}\n저장 일자:{formatted_date}"
-        summary_text = f"상태: {'수정됨' if item.get('is_updated', False) else '최초 등록'} | 설명: {item.get('description', '설명 없음')}"
-
-        item_summary_frame = ctk.CTkFrame(row_frame, fg_color="transparent")
-        item_summary_frame.grid(row=0, column=0, sticky="ew", padx=(5, 10))
-
-        ctk.CTkLabel(
-            item_summary_frame,
-            text=item_name,
-            anchor="w",
-            justify="left",
-            font=ctk.CTkFont(size=13, weight="bold")
-        ).pack(fill="x", anchor="w")
-
-        ctk.CTkLabel(
-            item_summary_frame,
-            text=f"요약: {summary_text}",
-            anchor="w",
-            justify="left",
-            font=ctk.CTkFont(size=11, slant="italic"),
-            text_color="gray"
-        ).pack(fill="x", anchor="w")
-
-        # 보기 버튼
-        ctk.CTkButton(
-            row_frame,
-            text="원본 영상 보기",
-            command=lambda file_data=item: open_file_action(file_data),
-            fg_color="#357ABD",
-            hover_color="#2B5E9E",
-            width=100,
-            height=36
-        ).grid(row=0, column=1, padx=5, pady=5)
-
-    # 5️⃣ 새 파일 등록 버튼 (항상 표시)
-    ctk.CTkButton(
-        parent_frame,
-        text="➕ 새 파일 항목 등록 및 업로드",
-        font=("", 13, "bold"),
-        command=open_upload_modal,
-        fg_color="#007BFF",
-        hover_color="#0056b3"
-    ).pack(pady=(10, 20))
 
 # ---------------- 파일 업로드 모달 ----------------
 def open_upload_modal():
@@ -697,12 +697,19 @@ def open_upload_modal():
                 # 파일 복사/삭제
                 try:
                     if local_source_path and os.path.isfile(local_source_path):
+                        # 도커 내부 기준 경로 → 외부 볼륨에 자동 매핑됨
+                        target_file_path = os.path.join(LOCAL_UPLOAD_DIR, os.path.basename(local_source_path))
+                        
+                        # 기존 파일이 있으면 삭제
                         if existing_item_id:
                             old_path = seq_to_item.get(seq, {}).get("file_path")
                             if old_path and os.path.exists(old_path) and old_path != target_file_path:
                                 os.remove(old_path)
+                
+                        # 대상 폴더 생성 후 복사
                         os.makedirs(os.path.dirname(target_file_path), exist_ok=True)
                         shutil.copy2(local_source_path, target_file_path)
+                
                 except Exception as e:
                     failure_messages.append(f"[{slot_label}] ❌ 파일 복사 실패: {e}")
                     continue

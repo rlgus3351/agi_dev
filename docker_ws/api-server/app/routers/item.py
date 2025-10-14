@@ -9,6 +9,7 @@ from typing import List
 from database import get_db
 import schemas
 
+
 router = APIRouter(
     prefix="/items",
     tags=["Items"],
@@ -111,3 +112,27 @@ def mark_item_as_updated(item_id: int, db: Session = Depends(get_db)):
     """), {"item_id": str(item_id)})
     db.commit()
     return {"ok": True}
+
+
+@router.get("/by-id/{item_id}", response_model=schemas.Item)
+def get_item_by_id(item_id: int, db: Session = Depends(get_db)):
+    """
+    특정 item_id로 단일 아이템 조회
+    """
+    query = text("""
+        SELECT * FROM tb_items
+        WHERE item_id = :item_id
+        LIMIT 1
+    """)
+    result = db.execute(query, {"item_id": item_id}).fetchone()
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    row = dict(result._mapping)
+
+    # ✅ UUID 타입을 문자열로 변환
+    if "patient_id" in row and not isinstance(row["patient_id"], str):
+        row["patient_id"] = str(row["patient_id"])
+
+    return row

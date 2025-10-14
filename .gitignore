@@ -8,3 +8,11 @@
 
 
 /parkinson/output/*
+
+/CHU/data_input_app/input_videos/*
+/CHU/data_input_app/__pycache__/
+/CHU/data_anonymization_app/input_videos/*
+/CHU/data_anonymization_app/__pycache__/
+/CHU/data_anonymization_app/data/output/*
+/CHU/data_anonymization_app/data/json/*
+/CHU/data_input_app/venv/*
