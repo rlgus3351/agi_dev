@@ -31,7 +31,7 @@ from api.video_api import create_new_item_and_get_id, call_api_to_save_video_met
 from form.survey import HealthSurveyForm
 from utils.videometa import get_video_metadata
 
-from config import API_URL, INSTITUTION , HEALTH_URL
+from config import API_URL, INSTITUTION , HEALTH_URL,ITEMS_BASE_URL
 
 JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
 JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
@@ -711,6 +711,13 @@ def open_upload_modal():
 
                 if action == "수정":
                     success, msg = call_api_to_update_video_metadata([meta_data])
+                    if success:
+                        # ✅ 수정된 영상일 경우 updated_at 자동 갱신 API 호출
+                        try:
+                            requests.put(f"{ITEMS_BASE_URL}{item_id}/mark-updated", timeout=5)
+                            print(f"Item {item_id} updated_at 갱신 완료 ✅")
+                        except Exception as e:
+                            print(f"[경고] updated_at 갱신 실패: {e}")
                 else:
                     success, msg = call_api_to_save_video_metadata(item_id, [meta_data])
 
@@ -1128,14 +1135,28 @@ def open_add_patient():
             "completion_date": None
         }
         # 로딩 기능 추가 고려
-        try:
-            add_patient(payload, INSTITUTION)
-            messagebox.showinfo("성공", "환자 등록 완료")
-        except Exception as e:
-            messagebox.showerror("오류", f"환자 등록 실패: {e}")
+        # try:
+        #     add_patient(payload, INSTITUTION)
+        #     messagebox.showinfo("성공", "환자 등록 완료")
+        # except Exception as e:
+        #     messagebox.showerror("오류", f"환자 등록 실패: {e}")
         
-        load_patients_table()
-        modal.destroy()
+        # load_patients_table()
+        # modal.destroy()
+        def after_register(_):
+            CTkMessagebox(title="성공", message="환자 등록 완료", icon="check")
+            load_patients_table()
+            modal.destroy()
+
+        def on_error(e):
+            CTkMessagebox(title="오류", message=f"환자 등록 실패: {e}", icon="cancel")
+
+        run_with_loading(
+            parent_frame=modal,
+            fetch_function=lambda: add_patient(payload, INSTITUTION),
+            callback=after_register,
+            loading_text="환자 등록 중입니다..."
+        )
 
     ctk.CTkButton(modal, text="등록", command=submit_patient).pack(pady=20)
 

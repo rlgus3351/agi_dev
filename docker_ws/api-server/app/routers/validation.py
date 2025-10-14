@@ -141,11 +141,38 @@ def read_new_pd_survey_items(patient_id: UUID, db: Session = Depends(get_db)):
 
 
 # 🎥 2. 파킨슨병 영상(VIDEO) 신규 데이터 조회
+# @router.get("/pd-new-items/video/{patient_id}", response_model=List[schemas.Item])
+# def read_new_pd_video_items(patient_id: UUID, db: Session = Depends(get_db)):
+#     """
+#     🎥 파킨슨병 영상(VIDEO) 중,
+#     검증 시점 이후 새로 수집된 item 데이터만 조회
+#     """
+#     query = text("""
+#         SELECT i.*
+#         FROM tb_items i
+#         LEFT JOIN tb_data_validation v
+#           ON i.item_id = v.item_id
+#         WHERE i.patient_id = :patient_id
+#           AND i.is_deleted = FALSE
+#           AND i.data_category = 'PD'
+#           AND i.data_type = 'VIDEO'              -- ✅ 영상 구분
+#           AND (
+#               v.validation_datetime IS NULL
+#               OR i.collected_at > v.validation_datetime
+#           )
+#         ORDER BY i.collected_at DESC;
+#     """)
+#     rows = db.execute(query, {"patient_id": str(patient_id)}).fetchall()
+#     if not rows:
+#         raise HTTPException(status_code=404, detail="검증 이후 새로 수집된 PD 영상 데이터가 없습니다.")
+#     return [dict(r._mapping) for r in rows]
+# 🎥 2. 파킨슨병 영상(VIDEO) 신규 데이터 조회 (수정 버전)
+
 @router.get("/pd-new-items/video/{patient_id}", response_model=List[schemas.Item])
 def read_new_pd_video_items(patient_id: UUID, db: Session = Depends(get_db)):
     """
     🎥 파킨슨병 영상(VIDEO) 중,
-    검증 시점 이후 새로 수집된 item 데이터만 조회
+    검증 시점 이후 새로 수집되거나 수정된 item 데이터만 조회
     """
     query = text("""
         SELECT i.*
@@ -155,17 +182,19 @@ def read_new_pd_video_items(patient_id: UUID, db: Session = Depends(get_db)):
         WHERE i.patient_id = :patient_id
           AND i.is_deleted = FALSE
           AND i.data_category = 'PD'
-          AND i.data_type = 'VIDEO'              -- ✅ 영상 구분
+          AND i.data_type = 'VIDEO'
           AND (
               v.validation_datetime IS NULL
-              OR i.collected_at > v.validation_datetime
+              OR GREATEST(i.collected_at, i.updated_at) > v.validation_datetime
           )
-        ORDER BY i.collected_at DESC;
+        ORDER BY GREATEST(i.collected_at, i.updated_at) DESC;
     """)
     rows = db.execute(query, {"patient_id": str(patient_id)}).fetchall()
     if not rows:
         raise HTTPException(status_code=404, detail="검증 이후 새로 수집된 PD 영상 데이터가 없습니다.")
     return [dict(r._mapping) for r in rows]
+
+
 
 @router.post("/pd-survey-check/{item_id}")
 def pd_validate_survey_completeness(item_id: int, db: Session = Depends(get_db)):
