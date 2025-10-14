@@ -4,7 +4,7 @@ import numpy as np
 from tqdm import tqdm
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import requests
-from config import PROCESS_BASE_URL, NAS_URL, USERNAME, PASSWORD
+from config import PROCESS_BASE_URL, NAS_URL, USERNAME, PASSWORD, ITEMS_BASE_URL,PATIENTS_BASE_URL
 from datetime import datetime
 import urllib3
 urllib3.disable_warnings()
@@ -130,6 +130,38 @@ def update_anonymization_status(video_id: int):
     except Exception as e:
         print(f"❌ 서버 업데이트 실패: {e}")
 
+def get_display_id_from_item(item_id: int) -> str | None:
+    """
+    1️⃣ item_id → patient_id 조회
+    2️⃣ patient_id → display_id 조회
+    """
+    try:
+        # 1️⃣ item_id로 patient_id 조회
+        item_url = f"{ITEMS_BASE_URL}{item_id}"
+        item_res = requests.get(item_url, headers={"accept": "application/json"})
+        item_res.raise_for_status()
+        item_data = item_res.json()
+        patient_id = item_data.get("patient_id")
+        if not patient_id:
+            print("⚠️ patient_id가 item 정보에 없습니다.")
+            return None
+
+        # 2️⃣ patient_id로 display_id 조회
+        patient_url = f"{PATIENTS_BASE_URL}{patient_id}"
+        patient_res = requests.get(patient_url, headers={"accept": "application/json"})
+        patient_res.raise_for_status()
+        patient_data = patient_res.json()
+        display_id = patient_data.get("display_id") or patient_data.get("displayID")
+
+        if display_id:
+            print(f"🧩 displayID 조회 완료: {display_id}")
+        else:
+            print("⚠️ display_id가 환자 정보에 없습니다.")
+        return display_id
+
+    except Exception as e:
+        print(f"❌ display_id 조회 실패: {e}")
+        return None
 
 # ----------------------------------------
 # ✅ 실패 로그 저장
@@ -153,7 +185,14 @@ def process_video(meta: dict):
     os.makedirs("data/json", exist_ok=True)
 
     output_path = f"data/output/{filename_wo_ext}_anonymized.mp4"
-    json_path = f"data/json/{filename_wo_ext}_rois.json"
+    display_id = get_display_id_from_item(item_id) if item_id else None
+    if display_id:
+        json_filename = f"{display_id}_rois.json"
+    else:
+        json_filename = f"{filename_wo_ext}_rois.json"
+
+    json_path = f"data/json/{json_filename}"
+    
 
     start_time = datetime.utcnow()
 
@@ -236,7 +275,7 @@ def process_video(meta: dict):
         try:
             sid = nas_login()
             upload_to_nas(sid, output_final_path, nas_folder="/mAGI/CNU_Data/VIDEO")
-            upload_to_nas(sid, json_path, nas_folder="/mAGI/CNU_Data/VIDEO/Json")
+            upload_to_nas(sid, json_path, nas_folder="/mAGI/JSON")
         except Exception as e:
             print(f"⚠️ NAS 업로드 중 오류 발생: {e}")
         finally:
@@ -245,7 +284,7 @@ def process_video(meta: dict):
 
         # ✅ NAS 경로 기반 DB 저장
         nas_video_path = f"/mAGI/CNU_Data/VIDEO/{os.path.basename(output_final_path)}"
-        nas_json_path = f"/mAGI/CNU_Data/VIDEO/Json/{os.path.basename(json_path)}"
+        nas_json_path = f"/mAGI/JSON/{os.path.basename(json_path)}"
 
         save_preprocessing_result(
             meta, nas_video_path, nas_json_path,

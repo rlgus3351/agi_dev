@@ -13,19 +13,6 @@ def fetch_one_video():
     return res.json()
 
 
-# def update_video_status(video_metadata_id: int):
-#     """처리 완료 후 서버에 is_anonymized=True로 업데이트"""
-#     url = f"{PROCESS_BASE_URL}update"
-#     payload = {
-#         "video_metadata_id": video_metadata_id,
-#         "is_anonymized": True,
-#         "anonymized_ts": datetime.now().isoformat()
-#     }
-#     res = requests.put(url, json=[payload])
-#     res.raise_for_status()
-#     return res.json()
-
-
 def run_processing_pipeline():
     """단일 영상 처리 실행"""
     video_info = fetch_one_video()
