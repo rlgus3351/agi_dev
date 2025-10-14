@@ -52,6 +52,26 @@ def fetch_video_metadata(item_id):
     res.raise_for_status()
     return res.json()
 
+def extract_stage_from_survey(item_id: int):
+    """설문 item_id로부터 저장된 중증도(stage) 조회"""
+    query_url = f"{VALIDATION_BASE_URL}pd-stage/{item_id}"
+    res = requests.get(query_url)
+    if res.status_code == 404:
+        return None  # 아직 계산/저장되지 않은 경우
+    res.raise_for_status()
+    return res.json()
+
+
+def calculate_and_save_stage(item_id: int):
+    """
+    서버에서 중증도 직접 계산하도록 요청
+    """
+    url = f"{VALIDATION_BASE_URL}pd-stage-calc/{item_id}"
+    res = requests.post(url)
+    if res.status_code == 404:
+        return None  # 중증도 응답 없음
+    res.raise_for_status()
+    return res.json()
 
 # -----------------------------
 #  검증 함수
@@ -129,6 +149,13 @@ def run_validation_pipeline():
             print(f"🧠 설문 신규 데이터 → item_id={item_id}")
             result = validate_survey(patient_id, item_id)
             print("   ⮑ 검증 결과:", result["status"], "|", result["description"])
+        
+            if result["status"] == "PASS":
+                stage = calculate_and_save_stage(item_id)
+                if stage:
+                    print(f"   ⮑ 중증도 저장됨: {stage['stage_value']} ({stage['stage_description']})")
+                else:
+                    print("   ⚠️ 설문 응답 없음 — 중증도 저장 생략")
 
         # 2️⃣ 영상 신규 데이터 확인 + 로컬 검증
         videos = fetch_new_pd_video_items(patient_id)

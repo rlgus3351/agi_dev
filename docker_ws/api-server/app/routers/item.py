@@ -99,3 +99,15 @@ def delete_item(item_id: int, db: Session = Depends(get_db)):
     if not result:
         raise HTTPException(status_code=404, detail="Item not found")
     return {"ok": True, "item_id": result.item_id}
+
+
+@router.put("/{item_id}/mark-updated")
+def mark_item_as_updated(item_id: int, db: Session = Depends(get_db)):
+    db.execute(text("""
+        UPDATE tb_items
+        SET is_updated = TRUE,
+            updated_at = NOW()
+        WHERE item_id = :item_id
+    """), {"item_id": str(item_id)})
+    db.commit()
+    return {"ok": True}

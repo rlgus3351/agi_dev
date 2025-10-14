@@ -148,3 +148,16 @@ def call_api_to_update_data(answers_list: list) -> Tuple[bool, Union[str, None]]
             error_msg += f" | 서버 상세: {response.json().get('detail', '알 수 없음')}"
         print(f"API Error (3): {error_msg}")
         return False, error_msg
+    
+
+def mark_item_updated(item_id: str):
+    """설문 수정 후 item의 update_ts, is_updated 갱신"""
+    url = f"{ITEMS_BASE_URL}{item_id}/mark-updated"
+    try:
+        res = requests.put(url, timeout=5)
+        res.raise_for_status()
+        print(f"[INFO] item_id={item_id} 메타정보 갱신 완료")
+        return True
+    except requests.RequestException as e:
+        print(f"[ERROR] item_id={item_id} 업데이트 실패: {e}")
+        return False

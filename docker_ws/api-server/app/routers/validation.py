@@ -121,19 +121,18 @@ def read_new_pd_survey_items(patient_id: UUID, db: Session = Depends(get_db)):
     검증 시점 이후 새로 수집된 item 데이터만 조회
     """
     query = text("""
-        SELECT i.*
-        FROM tb_items i
-        LEFT JOIN tb_data_validation v
-          ON i.item_id = v.item_id
-        WHERE i.patient_id = :patient_id
-          AND i.is_deleted = FALSE
-          AND i.data_category = 'PD'
-          AND i.data_type = 'MDS-UPDRS Part 3'   -- ✅ 설문지 구분
-          AND (
-              v.validation_datetime IS NULL
-              OR i.collected_at > v.validation_datetime
-          )
-        ORDER BY i.collected_at DESC;
+            SELECT i.*
+            FROM tb_items i
+            LEFT JOIN tb_data_validation v ON i.item_id = v.item_id
+            WHERE i.patient_id = :patient_id
+              AND i.is_deleted = FALSE
+              AND i.data_category = 'PD'
+              AND i.data_type = 'MDS-UPDRS Part 3'
+              AND (
+                  v.validation_datetime IS NULL
+                  OR GREATEST(i.collected_at, i.updated_at) > v.validation_datetime
+              )
+            ORDER BY GREATEST(i.collected_at, i.updated_at) DESC;
     """)
     rows = db.execute(query, {"patient_id": str(patient_id)}).fetchall()
     if not rows:
@@ -266,4 +265,77 @@ def pd_validate_survey_completeness(item_id: int, db: Session = Depends(get_db))
         "total_questions": total,
         "missing_questions": missing_questions,
         "description": desc
+    }
+
+
+@router.post("/pd-stage-calc/{item_id}")
+def calculate_parkinson_stage(item_id: int, db: Session = Depends(get_db)):
+    """
+    🧠 설문(question_id=8)을 기반으로 파킨슨병 중증도 저장
+    """
+    # 1️⃣ 해당 응답 가져오기
+    query = text("""
+        SELECT 
+            i.patient_id,
+            a.answer_value::numeric AS stage_value
+        FROM tb_questionnaire_answers a
+        JOIN tb_items i ON a.item_id = i.item_id
+        WHERE a.item_id = :item_id
+          AND a.question_id = 8
+          AND TRIM(a.answer_value) != ''
+          AND i.data_category = 'PD'
+          AND i.data_type = 'MDS-UPDRS Part 3';
+    """)
+    row = db.execute(query, {"item_id": item_id}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="중증도 설문 응답 없음")
+
+    stage_val = row.stage_value
+    patient_id = row.patient_id
+
+    # 2️⃣ 중증도 설명 자동 해석 (선택 사항)
+    def get_stage_description(value: float) -> str:
+        if value == 0:
+            return "질병의 증후가 없음"
+        elif value == 1:
+            return "일측성 상하지 장애"
+        elif value == 1.5:
+            return "일측성 상하지 장애와 체간 장애가 있음"
+        elif value == 2:
+            return "양측성 장애이나 균형장애는 전혀 없음"
+        elif value == 2.5:
+            return "양측성 장애이며, 몸을 잡아당기는 검사에서 균형을 잡을 수는 있음"
+        elif value == 3:
+            return "경도 및 중등도의 양측성 장애, 균형이 불안정, 그러나 독립적인 활동 가능"
+        elif value == 4:
+            return "걷고 서기는 할 수 있으나 심각한 무능력 상태"
+        elif value == 5:
+            return "휠체어를 타거나 침대에 누워 있어야만 하는 상태"
+        else:
+            return "기타 (직접 입력)"
+
+    desc = get_stage_description(stage_val)
+
+    # 3️⃣ INSERT (혹은 UPSERT) 기록
+    insert = text("""
+        INSERT INTO tb_parkinson_stage (patient_id, item_id, stage_value, stage_description)
+        VALUES (:patient_id, :item_id, :val, :desc)
+        ON CONFLICT (patient_id, item_id) DO UPDATE SET
+        stage_value = EXCLUDED.stage_value,
+        stage_description = EXCLUDED.stage_description
+        RETURNING *;
+    """)
+    result = db.execute(insert, {
+        "patient_id": patient_id,
+        "item_id": item_id,
+        "val": stage_val,
+        "desc": desc
+    })
+    db.commit()
+
+    return {
+        "patient_id": patient_id,
+        "item_id": item_id,
+        "stage_value": float(stage_val),
+        "stage_description": desc
     }

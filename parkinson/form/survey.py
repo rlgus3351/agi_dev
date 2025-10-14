@@ -285,24 +285,43 @@ class HealthSurveyForm(ctk.CTkFrame):
 
     # ---------------- 수정 모드 ----------------
     def _handle_edit(self, answers):
+        """
+        설문 수정 모드 처리:
+        1️⃣ 변경된 응답만 추출
+        2️⃣ 범위 유효성 검사
+        3️⃣ 서버에 업데이트 요청
+        4️⃣ item의 update_ts, is_updated 갱신
+        """
         print(f"[DEBUG] data_vars snapshot: { {k: v.get() for k, v in self.data_vars.items()} }")
         updated = []
     
-        # ✅ 중복 클릭 방지 (버튼 잠금)
+        # ✅ 중복 클릭 방지
         self.submit_btn.configure(state="disabled", text="수정 중...")
     
+        # ✅ item_id 추출
+        if isinstance(self.item_data, dict):
+            item_id = self.item_data.get("item_id")
+        else:
+            item_id = getattr(self.item_data, "item_id", None)
+    
+        if not item_id:
+            CTkMessagebox(title="오류", message="item_id가 없습니다.", icon="cancel")
+            self.submit_btn.configure(state="normal", text="데이터 수정")
+            return
+    
         try:
+            # ✅ question_id ↔ json_id 역매핑
             reverse_map = {v: k for k, v in MDS_QUESTION_MAPPING.items()}
     
-            # ✅ JSON에서 min/max 정보 미리 로드
+            # ✅ JSON 내 min/max 범위 정보 로드
             range_map = {}
             try:
                 with open(self.json_file, 'r', encoding='utf-8') as f:
                     json_data = json.load(f)
                     for section in json_data.get("운동성 검사", {}).get("sections", []):
                         for item in section.get("body", []):
-                            item_id = item.get("id")
-                            range_map[item_id] = {
+                            item_key = item.get("id")
+                            range_map[item_key] = {
                                 "min": item.get("min"),
                                 "max": item.get("max"),
                                 "type": item.get("type")
@@ -310,11 +329,12 @@ class HealthSurveyForm(ctk.CTkFrame):
             except Exception as e:
                 print(f"[WARN] 범위 정보 로드 실패: {e}")
     
-            # ✅ 실제 값 비교 시작
+            # ✅ 실제 변경 비교 시작
             for ans in self.initial_data:
                 aid = ans.get("answer_id")
                 qid = ans.get("question_id")
                 comp = ans.get("answer_component")
+    
                 json_id = reverse_map.get(qid)
                 if not json_id:
                     print(f"[WARN] question_id {qid} not found in reverse map → skipped")
@@ -329,7 +349,7 @@ class HealthSurveyForm(ctk.CTkFrame):
                 new_val = str(var.get()).strip()
                 old_val = str(ans.get("answer_value", "")).strip()
     
-                # ✅ min/max 유효성 검사
+                # ✅ min/max 검사
                 range_info = range_map.get(json_id)
                 if range_info and range_info["type"] in ["input-number", "grouped-inputs"]:
                     min_v = range_info.get("min")
@@ -352,22 +372,31 @@ class HealthSurveyForm(ctk.CTkFrame):
                             )
                             return
                     except ValueError:
-                        pass  # 숫자 아님 (라디오 등)
+                        pass  # 숫자 아님 (radio 등)
                     
-                # ✅ 변경된 값만 추가
+                # ✅ 변경된 응답만 수집
                 if new_val != old_val:
                     updated.append({
                         "answer_id": aid,
-                        "answer_value": new_val  # 문자열로 통일
+                        "answer_value": new_val
                     })
     
+            # ✅ 변경된 내용 없으면 중단
             if not updated:
                 CTkMessagebox(title="알림", message="변경된 내용이 없습니다.", icon="info")
                 return
     
-            # ✅ 서버 요청
+            # ✅ 서버에 업데이트 요청
             success, err = call_api_to_update_data(updated)
             if success:
+                # ✅ item의 update_ts, is_updated 갱신
+                try:
+                    from api.form_api import mark_item_updated
+                    mark_item_updated(item_id)
+                except Exception as e:
+                    print(f"[WARN] item 업데이트 실패: {e}")
+    
+                # ✅ 성공 알림
                 confirm_box = CTkMessagebox(
                     title="성공",
                     message=f"{len(updated)}개 응답이 수정되었습니다.",
@@ -376,6 +405,7 @@ class HealthSurveyForm(ctk.CTkFrame):
                 )
                 confirm_box.get()
     
+                # ✅ 창 닫기 여부 묻기
                 close_box = CTkMessagebox(
                     title="창 닫기",
                     message="폼을 닫을까요?",
@@ -393,5 +423,5 @@ class HealthSurveyForm(ctk.CTkFrame):
                 CTkMessagebox(title="오류", message=err or "수정 실패", icon="cancel")
     
         finally:
-            # ✅ 완료 후 버튼 다시 활성화
+            # ✅ 버튼 복구
             self.submit_btn.configure(state="normal", text="데이터 수정")
