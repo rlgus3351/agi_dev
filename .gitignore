@@ -5,3 +5,6 @@
 /dataInputProgram/share/*
 /dataInputProgram/src/depression/__pycache__/
 /docker_ws/api-server/.env
+
+
+/parkinson/output/*

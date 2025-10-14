@@ -27,7 +27,7 @@ def read_videos_by_item_id(item_id: int, db: Session = Depends(get_db)):
         SELECT 
             video_metadata_id, item_id, file_name, file_path, file_ext,
             file_size_mb, duration_seconds, resolution, frame_rate,
-            is_anonymized, created_ts, shooting_ts
+            needs_anonymization,is_anonymized, created_ts, shooting_ts,anonymized_ts, data_category
         FROM tb_Video_Metadata
         WHERE item_id = :item_id
     """)
@@ -60,11 +60,11 @@ def create_video_metadata(
         INSERT INTO tb_Video_Metadata (
             item_id,  file_name, file_path, file_size_mb, file_ext,
             duration_seconds, resolution, frame_rate,
-            is_anonymized, shooting_ts
+            needs_anonymization, shooting_ts, data_category
         ) VALUES (
             :item_id, :file_name, :file_path, :file_size_mb, :file_ext,
             :duration_seconds, :resolution, :frame_rate,
-            :is_anonymized, :shooting_ts
+            :needs_anonymization, :shooting_ts, :data_category
         )
     """)
 
@@ -80,8 +80,9 @@ def create_video_metadata(
                 "resolution": video.resolution,
                 "frame_rate": video.frame_rate,
                 "file_ext": video.file_ext,
-                "is_anonymized": video.is_anonymized,
-                "shooting_ts": video.shooting_ts
+                "needs_anonymization": video.needs_anonymization,
+                "shooting_ts": video.shooting_ts,
+                "data_category": video.data_category
             })
 
         db.execute(query, params_list)
@@ -120,7 +121,7 @@ def update_video_metadata(
             duration_seconds = COALESCE(:duration_seconds, duration_seconds),
             resolution = COALESCE(:resolution, resolution),
             frame_rate = COALESCE(:frame_rate, frame_rate),
-            is_anonymized = COALESCE(:is_anonymized, is_anonymized),
+            needs_anonymization = COALESCE(:needs_anonymization, needs_anonymization),
             file_ext = COALESCE(:file_ext, file_ext),
             shooting_ts = COALESCE(:shooting_ts, shooting_ts)
         WHERE video_metadata_id = :video_metadata_id
@@ -141,6 +142,7 @@ def update_video_metadata(
         raise HTTPException(status_code=500, detail=f"업데이트 실패: {str(e)}")
 
     return {"message": f"{len(request)}개의 비디오 메타데이터가 수정되었습니다."}
+
 
 
 # -------------------------------------------------------------
@@ -169,3 +171,38 @@ def update_video_metadata(
 #         "file_path": file_path,
 #         "file_size_mb": file_size_mb
 #     }
+
+# -------------------------------------------------------------
+# 5. 비식별화 처리 후 상태 업데이트 전용
+# -------------------------------------------------------------
+@router.put("/anonymization/update", status_code=status.HTTP_200_OK)
+def update_video_anonymization_status(
+    request: List[schemas.DataProcessingVideoMetaUpdate],
+    db: Session = Depends(get_db)
+):
+    """
+    비식별화 처리 후 needs_anonymization, is_anonymized, anonymized_ts 필드만 업데이트합니다.
+    """
+    if not request:
+        raise HTTPException(status_code=400, detail="수정할 데이터가 없습니다.")
+
+    query = text("""
+        UPDATE tb_video_metadata
+        SET 
+            needs_anonymization = COALESCE(:needs_anonymization, needs_anonymization),
+            is_anonymized = COALESCE(:is_anonymized, is_anonymized),
+            anonymized_ts = COALESCE(:anonymized_ts, anonymized_ts)
+        WHERE video_metadata_id = :video_metadata_id
+    """)
+
+    try:
+        params_list = [video.dict() for video in request]
+        db.execute(query, params_list)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"업데이트 실패: {str(e)}")
+
+    return {
+        "message": f"{len(request)}개의 비식별화 상태가 업데이트되었습니다."
+    }

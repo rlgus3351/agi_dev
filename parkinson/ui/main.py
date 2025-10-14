@@ -31,20 +31,21 @@ from api.video_api import create_new_item_and_get_id, call_api_to_save_video_met
 from form.survey import HealthSurveyForm
 from utils.videometa import get_video_metadata
 
+from config import API_URL, INSTITUTION , HEALTH_URL
+
 JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
 JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
 
-API_URL = "http://localhost:30000"
-INSTITUTION = "CNU"
 items_cache = {} # 환자별 수집 항목 캐시
 
 
+print(HEALTH_URL)
 # ---------------- 서버 체크 ----------------
 def check_server_status():
     try:
-        r = requests.get(f"{API_URL}/health", timeout=5)
+        r = requests.get(f"{HEALTH_URL}", timeout=5)
         if r.status_code == 200:
-            r2 = requests.get(f"{API_URL}/health/db", timeout=5)
+            r2 = requests.get(f"{HEALTH_URL}/db", timeout=5)
             if r2.status_code == 200:
                 return "OK"
             else:
@@ -628,7 +629,7 @@ def open_upload_modal():
                 video_info = {}
                 simulated_server_path = existing_info.get("file_path", "N/A")
 
-            is_anon = 1 if i in [1, 2, 3] else 0
+            is_anon = True if i in [1, 2, 3] else False
 
             files_to_process_meta.append({
                 "local_source_path": local_path or None,
@@ -642,8 +643,9 @@ def open_upload_modal():
                 "duration_seconds": int(video_info.get("duration_seconds", 0.0)),
                 "resolution": video_info.get("resolution", "N/A"),
                 "frame_rate": int(video_info.get("frame_rate", 0.0)),
-                "is_anonymized": is_anon,
+                "needs_anonymization": is_anon,
                 "shooting_ts": video_info.get("creation_time"),
+                "data_category": "PD",
             })
 
         if not files_to_process_meta:
@@ -1184,4 +1186,4 @@ show_empty_state()
 # 파일 영역 초기 상태 설정
 # show_file_items([])
 root.after(100, init_program)
-root.mainloop()
+root.mainloop() 
