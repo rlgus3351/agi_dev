@@ -2,7 +2,7 @@ import os
 import subprocess
 import requests
 from datetime import datetime
-from config import API_URL
+from config import API_URL, WINDOW_PREFIX, CONTAINER_PREFIX
 
 # -----------------------------
 #  기본 설정
@@ -73,16 +73,26 @@ def validate_survey(patient_id: str, item_id: int):
     res.raise_for_status()
     return res.json()
 
+def normalize_input_path(raw_path: str) -> str:
+    """
+    윈도우 로컬 경로를 Docker 컨테이너 내부 경로로 변환합니다.
+    """
+    if not raw_path:
+        return raw_path
+
+    normalized = raw_path.replace("\\", "/")
+    lower_path = normalized.lower()
+
+    if WINDOW_PREFIX.lower().replace("\\", "/") in lower_path:
+        return CONTAINER_PREFIX + normalized.split("parkinson/output/video", 1)[-1]
+
+    return normalized
+
 def check_video_local(file_path: str, file_ext: str):
     """Docker 컨테이너 환경에서도 경로 변환 후 영상 검증"""
 
-    # ✅ 1. Windows 경로 → Docker 내부 경로로 변환
-    normalized = file_path.replace("\\", "/")  # 슬래시 통일 먼저
-    if "teamgit/agi_dev/parkinson/output/video" in normalized.lower():
-        # 대소문자 구분 없이 교체
-        file_path = "/app/input_videos" + normalized.split("parkinson/output/video", 1)[-1]
-    else:
-        file_path = normalized
+    # ✅ 1. Windows 경로 → Docker 내부 경로로 변환 (config 기반)
+    file_path = normalize_input_path(file_path)
 
     # ✅ 2. 파일 존재 여부 확인
     if not os.path.exists(file_path):
@@ -106,6 +116,41 @@ def check_video_local(file_path: str, file_ext: str):
         return "FAIL", f"재생 불가 파일: {file_path}"
 
     return "PASS", f"정상 재생 가능 ({file_ext})"
+
+
+# def check_video_local(file_path: str, file_ext: str):
+#     """Docker 컨테이너 환경에서도 경로 변환 후 영상 검증"""
+
+#     # ✅ 1. Windows 경로 → Docker 내부 경로로 변환
+#     normalized = file_path.replace("\\", "/")  # 슬래시 통일 먼저
+#     if "teamgit/agi_dev/parkinson/output/video" in normalized.lower():
+#         # 대소문자 구분 없이 교체
+#         file_path = "/app/input_videos" + normalized.split("parkinson/output/video", 1)[-1]
+#     else:
+#         file_path = normalized
+
+#     # ✅ 2. 파일 존재 여부 확인
+#     if not os.path.exists(file_path):
+#         return "FAIL", f"파일 없음: {file_path}"
+
+#     # ✅ 3. 확장자 확인
+#     actual_ext = os.path.splitext(file_path)[1].lower().replace(".", "")
+#     if file_ext and actual_ext != file_ext.lower():
+#         return "FAIL", f"확장자 불일치 ({actual_ext} ≠ {file_ext})"
+
+#     # ✅ 4. ffprobe로 영상 유효성 검사
+#     try:
+#         cmd = [
+#             "ffprobe", "-v", "error",
+#             "-show_entries", "format=duration",
+#             "-of", "default=noprint_wrappers=1:nokey=1",
+#             file_path
+#         ]
+#         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+#     except Exception:
+#         return "FAIL", f"재생 불가 파일: {file_path}"
+
+#     return "PASS", f"정상 재생 가능 ({file_ext})"
 
 def post_video_validation(patient_id: str, item_id: int, desc: str, status: str):
     payload = {

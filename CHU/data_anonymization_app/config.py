@@ -16,7 +16,7 @@ USE_LOCALHOST = False   # True면 localhost, False면 내부망 IP 사용
 if USE_LOCALHOST:
     API_HOST = "localhost"
 else:
-    API_HOST = "172.30.224.1"
+    API_HOST = "121.178.59.41"
 
 API_PORT = 30000
 API_URL = f"http://{API_HOST}:{API_PORT}/"
@@ -70,3 +70,6 @@ LOG_FILE = "app.log"
 
 print(f"✅ CONFIG 로드 완료 — API_URL={API_URL}")
 print(f"🌐 MODE={'LOCALHOST' if USE_LOCALHOST else 'INTERNAL IP'}")
+
+WINDOW_PREFIX = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video".lower()
+CONTAINER_PREFIX = "/app/input_videos/parkinson/output/video"

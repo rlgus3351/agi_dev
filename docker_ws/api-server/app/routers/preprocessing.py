@@ -29,6 +29,7 @@ def get_next_video_to_process(db: Session = Depends(get_db)):
         WHERE v.needs_anonymization = true
           AND (v.is_anonymized IS NULL OR v.is_anonymized = false)
           AND v.data_category = 'PD'
+          AND v.validation_description LIKE '%PASS%'
         ORDER BY v.created_ts ASC
         LIMIT 1;
     """)

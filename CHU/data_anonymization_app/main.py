@@ -24,7 +24,16 @@ def run_processing_pipeline():
     if not video_info:
         print(f"[{datetime.now()}] ✅ 처리할 영상이 없습니다.\n")
         return False  # 처리 없음
+    file_path = video_info.get("file_path")
+    video_id = video_info.get("video_metadata_id")
+    item_id = video_info.get("item_id")
 
+    print(f"[{datetime.now()}] 🎬 처리 시작")
+    print(f"   • file_path = {file_path}")
+    print(f"   • video_metadata_id = {video_id}")
+    print(f"   • item_id = {item_id}")
+    print("-" * 60)
+    
     file_path = video_info["file_path"]
     print(f"[{datetime.now()}] 🎬 처리 시작: {file_path}")
 

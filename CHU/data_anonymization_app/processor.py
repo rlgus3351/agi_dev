@@ -4,7 +4,7 @@ import numpy as np
 from tqdm import tqdm
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import requests
-from config import PROCESS_BASE_URL, NAS_URL, USERNAME, PASSWORD, ITEMS_BASE_URL,PATIENTS_BASE_URL
+from config import PROCESS_BASE_URL, NAS_URL, USERNAME, PASSWORD, ITEMS_BASE_URL,PATIENTS_BASE_URL,WINDOW_PREFIX,CONTAINER_PREFIX
 from datetime import datetime
 import urllib3
 from typing import Optional
@@ -143,6 +143,7 @@ def get_display_id_from_item(item_id: int) -> Optional[str]:
         item_res.raise_for_status()
         item_data = item_res.json()
         patient_id = item_data.get("patient_id")
+        seq = item_data.get("seq")
         if not patient_id:
             print("⚠️ patient_id가 item 정보에 없습니다.")
             return None
@@ -156,9 +157,10 @@ def get_display_id_from_item(item_id: int) -> Optional[str]:
 
         if display_id:
             print(f"🧩 displayID 조회 완료: {display_id}")
+            print(f"🧩 seq 조회 완료: {seq}")
         else:
             print("⚠️ display_id가 환자 정보에 없습니다.")
-        return display_id
+        return display_id,seq
 
     except Exception as e:
         print(f"❌ display_id 조회 실패: {e}")
@@ -172,17 +174,37 @@ def log_failure(video_id_or_path: str, error_msg: str):
     with open("logs/error_log.txt", "a", encoding="utf-8") as f:
         f.write(f"[FAIL] {video_id_or_path} → {error_msg}\n")
 
-WINDOW_PREFIX = r"c:\TeamGit\agi_dev\parkinson\output\video".lower()
-CONTAINER_PREFIX = "/app/input_videos"
+# WINDOW_PREFIX = r"c:\TeamGit\agi_dev\parkinson\output\video".lower()
+# CONTAINER_PREFIX = "/app/input_videos"
+
 
 def normalize_input_path(raw_path: str) -> str:
+    """
+    윈도우 로컬 경로를 Docker 컨테이너 내부 경로로 변환합니다.
+    (현재 DEV_AGI + 과거 TeamGit 경로 모두 호환)
+    """
     if not raw_path:
         return raw_path
+
     normalized = raw_path.replace("\\", "/")
     lower_path = normalized.lower()
 
-    if "teamgit/agi_dev/parkinson/output/video" in lower_path:
-        return "/app/input_videos" + normalized.split("parkinson/output/video", 1)[-1]
+    # 이미 컨테이너 경로인 경우 그대로
+    if lower_path.startswith(CONTAINER_PREFIX):
+        return normalized
+
+    # 현재 기준 경로(WINDOW_PREFIX) 매핑
+    win_base = WINDOW_PREFIX.lower().replace("\\", "/")
+    if win_base in lower_path:
+        return CONTAINER_PREFIX + normalized.split("parkinson/output/video", 1)[-1]
+
+    # 과거 TeamGit 경로 호환
+    legacy_base = "teamgit/agi_dev"
+    if legacy_base in lower_path:
+        # TeamGit 하위 구조가 조금 달라도 'parkinson/output/video' 이후는 동일하므로 같은 split 사용
+        return CONTAINER_PREFIX + normalized.split("parkinson/output/video", 1)[-1]
+
+    # 위 조건에 안 걸리면 원문 반환 (이미 절대/상대 컨테이너 경로이거나 특수 케이스)
     return normalized
 # ----------------------------------------
 # ✅ 비식별화 메인 함수
@@ -191,6 +213,8 @@ def process_video(meta: dict):
     # 전대 병원 설정(Windows 경로)
     raw_path = meta["file_path"]
     input_path = normalize_input_path(raw_path)
+    print(f"[DEBUG] raw_path: {raw_path}")
+    print(f"[DEBUG] normalized to container path: {input_path}")
     filename = os.path.basename(input_path)
     filename_wo_ext = os.path.splitext(filename)[0]
     video_id = meta.get("video_metadata_id")
@@ -199,12 +223,12 @@ def process_video(meta: dict):
     os.makedirs("data/json", exist_ok=True)
 
     output_path = f"data/output/{filename_wo_ext}_anonymized.mp4"
-    display_id = get_display_id_from_item(item_id) if item_id else None
-    seq = meta.get("seq")
+    display_id,seq = get_display_id_from_item(item_id) if item_id else (None,None)
+
     if display_id and seq:
         json_filename = f"{display_id}_{seq}.json"
     elif display_id:
-        json_filename = f"{display_id}_rois.json"
+        json_filename = f"{display_id}_{filename}.json"
     else:
         json_filename = f"{filename_wo_ext}_rois.json"
 

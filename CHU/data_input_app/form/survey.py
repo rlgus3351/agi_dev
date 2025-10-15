@@ -176,7 +176,7 @@ class HealthSurveyForm(ctk.CTkFrame):
             var = ctk.StringVar(value=self.initial_answers_map.get(str(qnum), ""))
             self.data_vars[item_id] = var
 
-            label_text = f"{question} (범위: {min_val}~{max_val})" if min_val is not None and max_val is not None else question
+            label_text = f"{item_id}.{question} (범위: {min_val}~{max_val})" if min_val is not None and max_val is not None else question
             ctk.CTkLabel(parent, text=label_text, font=('', 14), justify="left", wraplength=450)\
                 .grid(row=row, column=0, sticky="w", padx=10, pady=10)
             ctk.CTkEntry(parent, textvariable=var, width=100, validate='key', validatecommand=vcmd)\
@@ -207,7 +207,7 @@ class HealthSurveyForm(ctk.CTkFrame):
 
             vcmd = (self.register(validate_grouped), "%P")
 
-            ctk.CTkLabel(parent, text=f"{question} (범위: {min_val}~{max_val})", font=('', 14), justify="left", wraplength=450)\
+            ctk.CTkLabel(parent, text=f"{item_id}. {question} (범위: {min_val}~{max_val})", font=('', 14), justify="left", wraplength=450)\
                 .grid(row=row, column=0, sticky="w", padx=10, pady=10)
             frame = ctk.CTkFrame(parent)
             frame.grid(row=row, column=1, sticky="w", padx=10, pady=10)

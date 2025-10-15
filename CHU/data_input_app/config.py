@@ -12,7 +12,7 @@ config.py
 
 # FastAPI 서버 기본 주소
 # API_HOST = "localhost"
-API_HOST = "localhost"
+API_HOST = "121.178.59.41"
 API_PORT = 30000
 
 # 전체 API base URL
@@ -68,3 +68,7 @@ DEBUG_MODE = True
 LOG_FILE = "app.log"
 
 LOCAL_UPLOAD_DIR = "/app/uploads"
+
+
+WINDOW_PREFIX = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video".lower()
+CONTAINER_PREFIX = "/app/input_videos"

@@ -13,7 +13,6 @@ import time
 import subprocess
 import platform
 from tkvideo import tkvideo
-
 # ✅ sys.path 수정
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
@@ -31,7 +30,7 @@ from api.video_api import create_new_item_and_get_id, call_api_to_save_video_met
 from form.survey import HealthSurveyForm
 from utils.videometa import get_video_metadata
 
-from config import API_URL, INSTITUTION , HEALTH_URL,ITEMS_BASE_URL
+from config import API_URL, INSTITUTION, HEALTH_URL, ITEMS_BASE_URL, WINDOW_PREFIX
 
 JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
 JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
@@ -624,7 +623,7 @@ def open_upload_modal():
                 file_name = f"{target_patient_id}_{seq}.{file_ext}"
             
                 # 서버 업로드용 경로 구성
-                simulated_server_path = os.path.join(OUTPUT_DIR, str(target_patient_id), file_name)
+                simulated_server_path = os.path.join(WINDOW_PREFIX, str(target_patient_id), file_name)
             else:
                 # 기존 파일 유지
                 existing_file_name = os.path.basename(existing_info.get("file_path", f"default_{seq}.mp4"))
@@ -1010,6 +1009,7 @@ def load_patients_table():
         birth = patient.get("birth_date") or "생년월일 없음"
         gender = patient.get("gender") or "?"
         created_ts = patient.get("created_ts")
+        is_data_complete = patient.get("is_data_complete", False)
 
         if birth != "생년월일 없음":
             try:
@@ -1027,6 +1027,12 @@ def load_patients_table():
                     pass
         else:
             created_ts = "?"
+        if is_data_complete:
+            text_color = "gray60"   # 연한 회색 (뿌옇게)
+            text_weight = "normal"
+        else:
+            text_color = "black"
+            text_weight = "normal"
 
         is_selected = selected_patient and selected_patient["patient_id"] == patient["patient_id"]
         bg_color = "#C4E1FF" if is_selected else "transparent"
@@ -1050,6 +1056,7 @@ def load_patients_table():
         create_label(1, birth, widths[1])
         create_label(2, gender, widths[2])
         create_label(3, created_ts, widths[3])
+    
 
         def make_delete_func(pid):
             return lambda: (delete_patient(pid, INSTITUTION), load_patients_table())
