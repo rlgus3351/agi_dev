@@ -5,6 +5,7 @@ services:
     ports:
       - "30000:8000"
     env_file: .env
+    restart: always
 
   prometheus:
     image: prom/prometheus
@@ -15,6 +16,7 @@ services:
       - "30001:9090"
     depends_on:
       - api
+    restart: always
 
   grafana:
     image: grafana/grafana
@@ -23,6 +25,7 @@ services:
       - "30002:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+    restart: always
 
 volumes:
   grafana_data:

@@ -12,7 +12,7 @@ config.py
 
 # FastAPI 서버 기본 주소
 # API_HOST = "localhost"
-API_HOST = "localhost"
+API_HOST = "121.178.59.41"
 API_PORT = 30000
 
 # 전체 API base URL

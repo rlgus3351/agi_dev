@@ -183,3 +183,5 @@ COMMENT ON COLUMN tb_Parkinson_Stage.stage_value IS '단계 값';
 COMMENT ON COLUMN tb_Parkinson_Stage.stage_description IS '단계 설명';
 COMMENT ON COLUMN tb_Parkinson_Stage.assessment_date IS '평가 날짜';
 GRANT DELETE, INSERT, UPDATE, SELECT ON TABLE dev_kkh.tb_Questionnaire_Questions TO pd_dep_collector;
+
+

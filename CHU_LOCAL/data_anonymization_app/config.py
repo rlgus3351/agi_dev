@@ -1,0 +1,75 @@
+"""
+config.py
+----------------------------------------
+공통 API 엔드포인트 및 환경 설정 파일
+(로컬·서버 환경 모두 쉽게 전환 가능)
+----------------------------------------
+"""
+
+# ============================================================
+# 🌐 기본 API 서버 설정
+# ============================================================
+
+# ✅ 로컬/서버 환경 전환 스위치
+USE_LOCALHOST = False   # True면 localhost, False면 내부망 IP 사용
+
+if USE_LOCALHOST:
+    API_HOST = "localhost"
+else:
+    API_HOST = "121.178.59.41"
+
+API_PORT = 30000
+API_URL = f"http://{API_HOST}:{API_PORT}/"
+
+# ============================================================
+# 🩺 엔드포인트 별 Base URL
+# ============================================================
+
+HEALTH_URL = API_URL + "health"
+PATIENTS_BASE_URL = API_URL + "patients/"
+ITEMS_BASE_URL = API_URL + "items/"
+FORM_BASE_URL = API_URL + "mds/"
+VIDEO_BASE_URL = API_URL + "video/"
+PROCESS_BASE_URL = API_URL + "processing/"
+
+# ============================================================
+# 💾 NAS 연결 설정 (비식별화 모듈 전용)
+# ============================================================
+
+NAS_URL = "https://121.147.253.141:5001"
+USERNAME = "ai03"
+PASSWORD = "Rkskekfk1!"
+
+# ============================================================
+# 🏥 기관 기본 설정
+# ============================================================
+
+INSTITUTION = "CNU"
+
+# ============================================================
+# 📁 파일 관련 경로 설정
+# ============================================================
+
+# 로컬 업로드 폴더 (CustomTkinter 앱 기준)
+LOCAL_UPLOAD_DIR = "C:/TeamGit/agi_dev/uploads"
+
+# 비디오 업로드 서버 폴더
+VIDEO_UPLOAD_PATH = "/data/uploads"
+
+# ============================================================
+# ⚙️ 기타 설정
+# ============================================================
+
+REQUEST_TIMEOUT = 10
+DEBUG_MODE = True
+LOG_FILE = "app.log"
+
+# ============================================================
+# 🧩 환경 확인 로그
+# ============================================================
+
+print(f"✅ CONFIG 로드 완료 — API_URL={API_URL}")
+print(f"🌐 MODE={'LOCALHOST' if USE_LOCALHOST else 'INTERNAL IP'}")
+
+WINDOW_PREFIX = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video".lower()
+CONTAINER_PREFIX = "/app/input_videos/parkinson/output/video"

@@ -633,7 +633,7 @@ def open_upload_modal():
                 video_info = {}
                 simulated_server_path = existing_info.get("file_path", "N/A")
 
-            is_anon = True if i in [1, 2, 3] else False
+            is_anon = True if i in [1, 2, 3,4] else False
 
             files_to_process_meta.append({
                 "local_source_path": local_path or None,

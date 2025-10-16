@@ -15,4 +15,14 @@
 /CHU/data_anonymization_app/__pycache__/
 /CHU/data_anonymization_app/data/output/*
 /CHU/data_anonymization_app/data/json/*
-/CHU/data_input_app/venv/*
+/CHU/data_anonymization_app/venv/*
+
+/CHU/data_input_app/venv/Lib/*
+
+*.mp4
+*.mov
+*.json
+*.zip
+*.pyc
+
+*/venv/*

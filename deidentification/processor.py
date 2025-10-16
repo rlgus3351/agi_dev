@@ -7,6 +7,8 @@ import requests
 from config import PROCESS_BASE_URL, NAS_URL, USERNAME, PASSWORD, ITEMS_BASE_URL,PATIENTS_BASE_URL
 from datetime import datetime
 import urllib3
+from typing import Optional, Tuple, Any
+
 urllib3.disable_warnings()
 
 # ✅ YOLO 모델 로드 (CPU 전용)
@@ -130,18 +132,20 @@ def update_anonymization_status(video_id: int):
     except Exception as e:
         print(f"❌ 서버 업데이트 실패: {e}")
 
-def get_display_id_from_item(item_id: int) -> str | None:
+def get_display_id_from_item(item_id: int) -> Optional[tuple[str, int]]:
+
     """
     1️⃣ item_id → patient_id 조회
     2️⃣ patient_id → display_id 조회
     """
     try:
         # 1️⃣ item_id로 patient_id 조회
-        item_url = f"{ITEMS_BASE_URL}{item_id}"
+        item_url = f"{ITEMS_BASE_URL}by-id/{item_id}"
         item_res = requests.get(item_url, headers={"accept": "application/json"})
         item_res.raise_for_status()
         item_data = item_res.json()
         patient_id = item_data.get("patient_id")
+        seq = item_data.get("seq")
         if not patient_id:
             print("⚠️ patient_id가 item 정보에 없습니다.")
             return None
@@ -155,9 +159,10 @@ def get_display_id_from_item(item_id: int) -> str | None:
 
         if display_id:
             print(f"🧩 displayID 조회 완료: {display_id}")
+            print(f"🧩 seq 조회 완료: {seq}")
         else:
             print("⚠️ display_id가 환자 정보에 없습니다.")
-        return display_id
+        return display_id,seq
 
     except Exception as e:
         print(f"❌ display_id 조회 실패: {e}")
@@ -180,12 +185,12 @@ def process_video(meta: dict):
     filename = os.path.basename(input_path)
     filename_wo_ext = os.path.splitext(filename)[0]
     video_id = meta.get("video_metadata_id")
-
+    item_id = meta.get("item_id")
     os.makedirs("data/output", exist_ok=True)
     os.makedirs("data/json", exist_ok=True)
 
     output_path = f"data/output/{filename_wo_ext}_anonymized.mp4"
-    display_id = get_display_id_from_item(item_id) if item_id else None
+    display_id,seq = get_display_id_from_item(item_id) if item_id else (None,None)
     if display_id:
         json_filename = f"{display_id}_rois.json"
     else:
