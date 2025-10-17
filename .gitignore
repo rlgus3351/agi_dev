@@ -25,4 +25,10 @@
 *.zip
 *.pyc
 
-*/venv/*
+/CHU_LOCAL/test/venv_gpu/Lib/*
+/CHU_LOCAL/test/venv_gpu/Scripts/*
+/CHU_LOCAL/test/venv_gpu/Include/*
+/CHU_LOCAL/test/input_videos/*
+/CHU_LOCAL/test/__pycache__/
+/CHU_LOCAL/test/data/output/*
+/CHU_LOCAL/test/data/json/*

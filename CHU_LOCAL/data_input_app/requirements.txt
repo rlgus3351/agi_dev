@@ -7,3 +7,5 @@ numpy==1.24.4
 tkVideo==0.1
 pymediainfo==6.1.0
 opencv-python==4.7.0.72
+psycopg2-binary==2.9.6
+sqlalchemy==2.0.19

@@ -1,74 +1,35 @@
 """
 config.py
 ----------------------------------------
-공통 API 엔드포인트 및 환경 설정 파일
-(로컬·서버 환경 모두 쉽게 전환 가능)
+로컬 환경용 PostgreSQL 설정 파일
+(인터넷 없이도 동작)
 ----------------------------------------
 """
 
 # ============================================================
-# 🌐 기본 API 서버 설정
+# 🗄️ PostgreSQL DB 설정
 # ============================================================
 
-# FastAPI 서버 기본 주소
-# API_HOST = "localhost"
-API_HOST = "121.178.59.41"
-API_PORT = 30000
+DB_HOST = "127.0.0.1"     # 로컬 DB 서버
+DB_PORT = 5432            # 기본 포트
+DB_NAME = "agi_dev"     # 실제 DB 이름
+DB_USER = "postgres"      # DB 사용자명
+DB_PASSWORD = "rkskekfk1!"  # PostgreSQL 비밀번호
 
-# 전체 API base URL
-API_URL = f"http://{API_HOST}:{API_PORT}/"
+# SQLAlchemy URL
+DATABASE_URL = (
+    f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"?options=-csearch_path%3Ddev_kkh"
+)
 
-# ============================================================
-# 🩺 엔드포인트 별 Base URL
-# ============================================================
-
-# 헬스체크
-HEALTH_URL = API_URL + "health"
-
-# 환자 관리 API
-PATIENTS_BASE_URL = API_URL + "patients/"
-
-# 수집 항목 API (설문, 영상 등 상위 엔트리)
-ITEMS_BASE_URL = API_URL + "items/"
-
-# 설문 응답 API (MDS 폼)
-FORM_BASE_URL = API_URL + "mds/"
-
-# 비디오 메타데이터 API
-VIDEO_BASE_URL = API_URL + "video/"
 
 # ============================================================
-# 🏥 기관 기본 설정
+# ⚙️ 로컬 앱 설정
 # ============================================================
 
-# 기관명 (예: CNU, CHOSUN, MOKPO 등)
 INSTITUTION = "CNU"
-
-# ============================================================
-# 📁 파일 관련 경로 설정
-# ============================================================
-
-# 로컬 업로드 폴더 (CustomTkinter 앱 기준)
-# LOCAL_UPLOAD_DIR = "C:/TeamGit/agi_dev/uploads"
-
-# 비디오 업로드 서버 폴더
-VIDEO_UPLOAD_PATH = "/data/uploads"
-
-# ============================================================
-# ⚙️ 기타 설정
-# ============================================================
-
-# 요청 타임아웃 (초 단위)
-REQUEST_TIMEOUT = 10
-
-# 디버그 모드
 DEBUG_MODE = True
-
-# 로그 파일 경로
 LOG_FILE = "app.log"
 
-LOCAL_UPLOAD_DIR = "/app/uploads"
-
-
-WINDOW_PREFIX = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video".lower()
-CONTAINER_PREFIX = "/app/input_videos"
+# 로컬 경로
+LOCAL_UPLOAD_DIR = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"

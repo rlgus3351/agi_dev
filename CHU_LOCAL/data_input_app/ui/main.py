@@ -21,17 +21,18 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output", "video")  # ⬅️ 원하는 �
 
 # sys.path.append(PROJECT_ROOT)
 
-from api.patient_api import add_patient, delete_patient, fetch_patients
-from api.item_api import fetch_items,delete_survey_item
+# from api.patient_api import add_patient, delete_patient, fetch_patients
+# from api.item_api import fetch_items,delete_survey_item
 from utils.loader import run_with_loading, run_with_loading_popup
-from api.health_api import check_server_status
-from api.form_api import fetch_mds_answers
-from api.video_api import create_new_item_and_get_id, call_api_to_save_video_metadata,fetch_video_metadata_by_item_id,call_api_to_update_video_metadata
-# from config import HEALTH_URL, INSTITUTION  # config에서 가져옴 (현재는 하드코딩 사용)
-from form.survey import HealthSurveyForm
-from utils.videometa import get_video_metadata
+# from api.health_api import local_db_check
+# from api.form_api import fetch_mds_answers
+# from api.video_api import create_new_item_and_get_id, call_api_to_save_video_metadata,fetch_video_metadata_by_item_id,call_api_to_update_video_metadata
+# from form.survey import HealthSurveyForm
+# from utils.videometa import get_video_metadata
 
-from config import API_URL, INSTITUTION, HEALTH_URL, ITEMS_BASE_URL, WINDOW_PREFIX
+# from config import INSTITUTION, ITEMS_BASE_URL, WINDOW_PREFIX
+from utils.db_utils import get_connection, release_connection
+from sqlalchemy import text
 
 JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
 JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
@@ -39,47 +40,55 @@ JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
 items_cache = {} # 환자별 수집 항목 캐시
 
 # ---------------- 서버 체크 ----------------
-def check_server_status():
+def local_db_check():
+    """로컬 DB 연결 상태 확인"""
     try:
-        r = requests.get(f"{HEALTH_URL}", timeout=5)
-        if r.status_code == 200:
-            r2 = requests.get(f"{HEALTH_URL}/db", timeout=5)
-            if r2.status_code == 200:
-                return "OK"
-            else:
-                return "DB_FAIL"
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        result = cur.fetchone()
+        cur.close()
+        release_connection(conn)
+        if result and result[0] == 1:
+            return "OK"
         else:
-            return "API_FAIL"
+            return "DB_FAIL"
     except Exception:
-        return "API_FAIL"
+        return "CONNECTION_FAIL"
 
 def init_program():
-    """프로그램 첫 실행 시 서버 상태 확인 (로딩 오버레이 포함)"""
+    """프로그램 첫 실행 시 로컬 DB 상태 확인 (로딩 오버레이 포함)"""
+
     def after_check(result):
         if result == "OK":
-            CTkMessagebox(title="성공", message="서버 연결 성공", icon="check")
+            CTkMessagebox(title="성공", message="로컬 DB 연결 성공 ✅", icon="check")
             load_patients_table()
         elif result == "DB_FAIL":
-            CTkMessagebox(title="오류", message="DB 연결 실패. 관리자에게 문의하세요.", icon="cancel")
+            CTkMessagebox(title="오류", message="DB 동작 이상. 관리자에게 문의하세요.", icon="cancel")
             show_server_error()
         else:
-            CTkMessagebox(title="오류", message="API 서버 연결 실패. 네트워크 확인 필요", icon="cancel")
+            CTkMessagebox(title="오류", message="로컬 DB 연결 실패. 설정을 확인하세요.", icon="cancel")
             show_server_error()
 
     run_with_loading(
         parent_frame=root,
-        fetch_function=check_server_status,
+        fetch_function=local_db_check,  # ✅ 여기서 바로 로컬 DB 확인
         callback=after_check,
-        loading_text="서버 상태 확인 중입니다..."
+        loading_text="로컬 DB 연결 확인 중입니다..."
     )
 
 
 def show_server_error():
-    """서버 연결 실패 시 테이블 영역에 표시"""
+    """DB 연결 실패 시 테이블 영역에 표시"""
     for widget in table_frame.winfo_children():
         widget.destroy()
-    ctk.CTkLabel(table_frame, text="서버와 연결할 수 없습니다.",
-                 font=("", 14, "italic"), text_color="red").pack(pady=20)
+
+    ctk.CTkLabel(
+        table_frame,
+        text="로컬 DB와 연결할 수 없습니다.",
+        font=("", 14, "italic"),
+        text_color="red"
+    ).pack(pady=20)
 
 def reload_after_close():
     pid = selected_patient["patient_id"]
