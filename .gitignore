@@ -39,3 +39,7 @@
 /external_data_scheduler/venv/Lib/*
 /external_data_scheduler/venv/Scripts/*
 /external_data_scheduler/venv/Include/*
+
+/CHU_LOCAL/data_validation_app/venv/Lib/*
+/CHU_LOCAL/data_validation_app/venv/Scripts/*
+/CHU_LOCAL/data_validation_app/venv/Include/*
