@@ -21,15 +21,16 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output", "video")  # ⬅️ 원하는 �
 
 # sys.path.append(PROJECT_ROOT)
 
-from api_local.patient_api_local import add_patient, delete_patient, fetch_patients
-from api_local.item_api_local import fetch_items,delete_survey_item,mark_item_updated_local
+# from api.patient_api import add_patient, delete_patient, fetch_patients
+# from api.item_api import fetch_items,delete_survey_item
 from utils.loader import run_with_loading, run_with_loading_popup
-from api_local.form_api_local import fetch_mds_answers
-from api_local.video_api_local import create_new_item_and_get_id, save_video_metadata,fetch_video_metadata_by_item_id,update_video_metadata
-from form.survey import HealthSurveyForm
-from utils.videometa import get_video_metadata
+# from api.health_api import local_db_check
+# from api.form_api import fetch_mds_answers
+# from api.video_api import create_new_item_and_get_id, call_api_to_save_video_metadata,fetch_video_metadata_by_item_id,call_api_to_update_video_metadata
+# from form.survey import HealthSurveyForm
+# from utils.videometa import get_video_metadata
 
-from config import INSTITUTION, VIDEO_SAVE_BASE
+# from config import INSTITUTION, ITEMS_BASE_URL, WINDOW_PREFIX
 from utils.db_utils import get_connection, release_connection
 from sqlalchemy import text
 
@@ -272,22 +273,12 @@ def show_survey_items(survey_items):
         # 📅 날짜 포맷 처리
         collected_at_raw = item.get('collected_at')
         formatted_date = ""
-
         if collected_at_raw:
             try:
-                # 🧩 1️⃣ 이미 datetime 객체인 경우
-                if isinstance(collected_at_raw, datetime):
-                    dt_obj = collected_at_raw
-                else:
-                    # 🧩 2️⃣ 문자열인 경우 → ISO 형식 or 공백 구분 자동 처리
-                    dt_obj = datetime.fromisoformat(str(collected_at_raw).strip())
-
+                dt_obj = datetime.strptime(collected_at_raw.split('.')[0], "%Y-%m-%dT%H:%M:%S")
                 formatted_date = dt_obj.strftime(" (%Y-%m-%d %H:%M:%S)")
-            except Exception as e:
-                print(f"[날짜 파싱 오류] {collected_at_raw} → {e}")
+            except Exception:
                 formatted_date = " (날짜 오류)"
-        else:
-            formatted_date = ""
 
         # 항목 정보 라벨
         item_name = f"[{item['data_category']}] {item['data_type']}\n저장 일자:{formatted_date}"
@@ -493,32 +484,13 @@ def show_file_items(parent_frame, file_items):
         # 날짜 포맷팅
         collected_at_raw = item.get('collected_at', '')
         formatted_date = ""
-        print(collected_at_raw)
-
         if collected_at_raw:
             try:
-                if isinstance(collected_at_raw, datetime):
-                    dt_obj = collected_at_raw
-                else:
-                    # 문자열인 경우 → datetime으로 변환 시도
-                    collected_at_str = str(collected_at_raw).strip()
-                    # 공백 방지
-                    if " " in collected_at_str:
-                        # 예: '2025-10-19 21:21:57.618579'
-                        dt_obj = datetime.strptime(collected_at_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
-                    elif "T" in collected_at_str:
-                        # 예: '2025-10-19T21:21:57'
-                        dt_obj = datetime.strptime(collected_at_str.split(".")[0], "%Y-%m-%dT%H:%M:%S")
-                    else:
-                        # 혹시 몰라 마지막 fallback
-                        dt_obj = datetime.fromisoformat(collected_at_str)
-
+                from datetime import datetime
+                dt_obj = datetime.strptime(collected_at_raw.split('.')[0], "%Y-%m-%dT%H:%M:%S")
                 formatted_date = dt_obj.strftime(" (%Y-%m-%d %H:%M:%S)")
-            except Exception as e:
-                print(f"[날짜 파싱 오류] {collected_at_raw} → {e}")
+            except Exception:
                 formatted_date = " (날짜 오류)"
-        else:
-            formatted_date = ""
 
         # 항목 이름 및 요약
         item_name = f"[{item['data_category']}] {item['data_type']}\n저장 일자:{formatted_date}"
@@ -661,7 +633,7 @@ def open_upload_modal():
                 file_name = f"{target_patient_id}_{seq}.{file_ext}"
             
                 # 서버 업로드용 경로 구성
-                simulated_server_path = os.path.join(VIDEO_SAVE_BASE, str(target_patient_id), file_name)
+                simulated_server_path = os.path.join(WINDOW_PREFIX, str(target_patient_id), file_name)
             else:
                 # 기존 파일 유지
                 existing_file_name = os.path.basename(existing_info.get("file_path", f"default_{seq}.mp4"))
@@ -747,12 +719,16 @@ def open_upload_modal():
                 meta_data['item_id'] = item_id
 
                 if action == "수정":
-                    success, msg = update_video_metadata([meta_data])
+                    success, msg = call_api_to_update_video_metadata([meta_data])
                     if success:
                         # ✅ 수정된 영상일 경우 updated_at 자동 갱신 API 호출
-                        mark_item_updated_local(item_id)
+                        try:
+                            requests.put(f"{ITEMS_BASE_URL}{item_id}/mark-updated", timeout=5)
+                            print(f"Item {item_id} updated_at 갱신 완료 ✅")
+                        except Exception as e:
+                            print(f"[경고] updated_at 갱신 실패: {e}")
                 else:
-                    success, msg = save_video_metadata(item_id, [meta_data])
+                    success, msg = call_api_to_save_video_metadata(item_id, [meta_data])
 
                 if success:
                     success_count += 1
@@ -802,111 +778,96 @@ def open_upload_modal():
 
 # ---------------- 환자 선택 및 항목 로드 로직 ----------------
 def on_select_patient(patient, row_frame):
-    """
-    환자 선택 시 설문 및 파일 항목 로드
-    - 기존 선택된 행 색상 초기화 (존재 체크)
-    - 새 선택 행 하이라이트
-    - 설문/파일 영역 초기화 후 로딩 표시
-    - 비동기 스레드로 항목 불러오기
-    """
     global selected_patient, selected_row
 
-    # ✅ 기존 선택 해제 (존재 체크)
-    try:
-        if selected_row and selected_row.winfo_exists():
-            selected_row.configure(fg_color="transparent")
-    except Exception as e:
-        print(f"[경고] 이전 선택 해제 중 오류: {e}")
-        selected_row = None
+    # 기존 선택 해제
+    if selected_row:
+        selected_row.configure(fg_color="transparent")
 
-    # ✅ 새 선택 표시
-    try:
-        if row_frame and row_frame.winfo_exists():
-            row_frame.configure(fg_color="#D0E8FF")
-            selected_row = row_frame
-    except Exception as e:
-        print(f"[경고] 새 선택 표시 오류: {e}")
-        selected_row = None
-
+    # 새 선택 표시
+    row_frame.configure(fg_color="#D0E8FF")
     selected_patient = patient
-    pid = patient.get("patient_id")
+    selected_row = row_frame
+    show_selected_patient()
 
-    # ✅ 설문/파일 영역 초기화 및 로딩 상태 표시
-    show_empty_state()
+    pid = patient["patient_id"]
+
+    # 항목 표시 영역을 초기화하고 로딩 상태 표시
+    show_empty_state() # 설문 영역 초기화
     clear_file_items_area()
+    # show_file_items([]) # 파일 영역 초기화
 
-    loading_label_survey = ctk.CTkLabel(
-        score_frame, text="📋 수집 항목 로드 중...", text_color="blue"
-    )
+    # 로딩 표시 (임시)
+    loading_label_survey = ctk.CTkLabel(score_frame, text="수집 항목 로드 중...", text_color="blue")
     loading_label_survey.pack(pady=10)
-    loading_label_file = ctk.CTkLabel(
-        upload_list_frame, text="📂 수집 항목 로드 중...", text_color="blue"
-    )
+    loading_label_file = ctk.CTkLabel(upload_list_frame, text="수집 항목 로드 중...", text_color="blue")
     loading_label_file.pack(pady=10)
 
-    # ✅ 캐시된 데이터가 있으면 즉시 처리
+    # ✅ 항목이 이미 캐시에 있으면 바로 처리
     if pid in items_cache:
         loading_label_survey.destroy()
         loading_label_file.destroy()
         process_items(items_cache[pid])
         return
 
-    # ✅ 비동기 스레드로 DB 접근 (UI 멈춤 방지)
+    # on_select_patient 함수 내부
+
+    # ✅ 스레드로 비동기 요청
     def fetch_in_background():
         try:
-            # 1️⃣ 기본 수집 항목 조회
-            items = fetch_items(pid)
+            # 1. 메타데이터 (항목 기본 정보) 로드
+            items = fetch_items(pid) 
 
-            # 2️⃣ 설문 항목이면 응답 데이터까지 불러오기
+            # 2. 설문 항목에 대해 상세 응답을 추가로 로드 (enrichment)
             enriched_items = []
             for item in items:
-                data_type = item.get("data_type", "").upper()
-                data_category = item.get("data_category", "").upper()
-
+                data_type = item.get('data_type', '').upper()
+                
+                # 설문 항목인지 확인 (process_items의 분류 로직을 따름)
                 is_survey_item = (
-                    "FORM" in data_category
-                    or "MDS-UPDRS" in data_type
-                    or "SURVEY" in data_type
+                    'FORM' in item.get('data_category', '').upper() 
+                    or 'MDS-UPDRS' in data_type 
+                    or 'SURVEY' in data_type
                 )
+                
+                # 설문 항목인데 questions가 없는 경우에만 상세 조회
+                if is_survey_item and not item.get('questions'):
+                    item_id = item.get('item_id')
 
-                if is_survey_item and not item.get("questions"):
-                    item_id = item.get("item_id")
                     if item_id:
-                        try:
-                            detailed_answers_raw = fetch_mds_answers(item_id)
-
-                            # A. 요약용 데이터 생성
-                            detailed_answers_formatted = format_mds_answers(detailed_answers_raw)
-
-                            # B. 원본/요약 동시 저장
-                            item["questions_raw"] = detailed_answers_raw
-                            item["questions"] = detailed_answers_formatted
-                        except Exception as e:
-                            print(f"[경고] item_id={item_id} 설문 상세 로드 실패: {e}")
+                        detailed_answers_raw = fetch_mds_answers(item_id) 
+                    
+                         # A. 요약 (Summary) 및 데이터 유무 판단용 데이터 (간결/압축)
+                        detailed_answers_formatted = format_mds_answers(detailed_answers_raw)
+                        
+                        # B. 폼 로딩 (Edit)용 원시 데이터 (상세)
+                        # 원시 데이터를 'raw_questions'와 같은 별도의 키에 저장합니다.
+                        item['questions_raw'] = detailed_answers_raw # <-- 원시 데이터 저장
+                        
+                        # 'questions' 키에는 요약용 데이터를 저장하여 has_data=True 및 generate_summary가 작동하도록 합니다.
+                        item['questions'] = detailed_answers_formatted
+                    
                 enriched_items.append(item)
-
-            items_to_process = enriched_items
+            
+            # 다음 단계(UI 업데이트)로 넘길 데이터는 enriched_items
+            items_to_process = enriched_items 
 
         except Exception as e:
-            print(f"❌ 항목 로드 실패: {e}")
             items_to_process = e
-
-        # ✅ UI 업데이트는 main thread에서 실행
+            
+        # UI 업데이트는 main thread에서
         def update_ui():
-            try:
-                loading_label_survey.destroy()
-                loading_label_file.destroy()
-            except Exception:
-                pass
-
+            loading_label_survey.destroy()
+            loading_label_file.destroy()
+            
             if not isinstance(items_to_process, Exception):
-                items_cache[pid] = items_to_process
+                items_cache[pid] = items_to_process # 캐시도 상세 내용으로 업데이트
                 process_items(items_to_process)
             else:
                 messagebox.showerror("에러", f"수집 항목 로딩 실패:\n{items_to_process}")
                 show_survey_items([])
-                show_file_items([])
-
+                show_file_items(upload_list_frame, [])
+                
         root.after(0, update_ui)
 
     threading.Thread(target=fetch_in_background, daemon=True).start()
@@ -1057,7 +1018,7 @@ def load_patients_table():
         initials = patient.get("patient_initials") or "이니셜 없음"
         birth = patient.get("birth_date") or "생년월일 없음"
         gender = patient.get("gender") or "?"
-        # created_ts = patient.get("created_ts")
+        created_ts = patient.get("created_ts")
         is_data_complete = patient.get("is_data_complete", False)
 
         if birth != "생년월일 없음":
@@ -1066,20 +1027,14 @@ def load_patients_table():
             except Exception:
                 pass
 
-        created_ts_val = patient.get("created_ts")
-
-        if created_ts_val:
+        if created_ts:
             try:
-                # 🧩 이미 datetime 객체면 그대로
-                if isinstance(created_ts_val, datetime):
-                    dt_obj = created_ts_val
-                else:
-                    # 문자열이면 fromisoformat으로 자동 처리
-                    dt_obj = datetime.fromisoformat(str(created_ts_val).split(".")[0])
-                created_ts = dt_obj.strftime("%Y-%m-%d %H:%M")
-            except Exception as e:
-                print(f"[등록일시 파싱 오류] {created_ts_val} → {e}")
-                created_ts = "?"
+                created_ts = datetime.strptime(created_ts, "%Y-%m-%dT%H:%M:%S.%f").strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                try:
+                    created_ts = datetime.strptime(created_ts, "%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    pass
         else:
             created_ts = "?"
         if is_data_complete:

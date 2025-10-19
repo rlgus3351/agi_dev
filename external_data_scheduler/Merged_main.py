@@ -47,10 +47,7 @@ def parse_latency(latency_value):
 # 3️⃣ 종료 시각 파싱 함수 (collected_date → checked_at)
 # ============================================
 def parse_checked_at(collected_date_str):
-    """
-    collected_date 예: '2025-09-04 09:37 ~ 2025-09-05 11:28'
-    → 종료 시간(오른쪽 값)을 datetime으로 반환
-    """
+    """예: '2025-09-04 09:37 ~ 2025-09-05 11:28' → 종료 시각 반환"""
     if not collected_date_str:
         return None
 
@@ -133,14 +130,14 @@ def insert_validation_metadata(cur, folder_path, code_name):
         else:
             validation_result = "FAIL"
 
-        # ✅ DB INSERT
+        # ✅ DB INSERT (파일명 포함)
         cur.execute("""
             INSERT INTO dev_kkh.tb_external_validation
             (code_name, data_category, data_type,
              validation_type, validation_result, validation_score,
              verification_missing_rate, reference_missing_rate, doi_missing_rate,
-             file_size_mb, collection_latency, checked_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             file_size_mb, collection_latency, checked_at, source_filename)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             code_name,
             data_category,
@@ -153,13 +150,14 @@ def insert_validation_metadata(cur, folder_path, code_name):
             doi_missing_rate,
             round(file_size_mb, 2),
             collection_latency,
-            checked_at  # ✅ 수집 종료 시간 기록
+            checked_at,
+            data_file  # ✅ 병합된 수집 파일명 저장
         ))
 
         print(
             f"✅ {code_name} → {meta_file} 등록 완료 "
             f"({data_type}, {file_size_mb:.2f}MB, score={validation_score}, "
-            f"result={validation_result}, checked_at={checked_at})"
+            f"result={validation_result}, checked_at={checked_at}, file={data_file})"
         )
 
 

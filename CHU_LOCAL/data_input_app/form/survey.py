@@ -6,14 +6,14 @@ import tkinter.filedialog as filedialog
 from datetime import datetime
 from typing import Union
 from typing import Optional
-from api.schemas import Item
+from api_local.schemas import Item
 
-from api.form_api import (
+from api_local.form_api_local import (
     MDS_QUESTION_MAPPING,
     transform_to_api_format,
     create_new_item_and_get_id,
-    call_api_to_save_data,
-    call_api_to_update_data
+    save_mds_answers,
+    update_mds_answers
 )
 
 # ✅ 기본 JSON 경로 설정
@@ -241,21 +241,7 @@ class HealthSurveyForm(ctk.CTkFrame):
             self._handle_insert(answers)
         else:
             self._handle_edit(answers)
-
-    # ---------------- 신규 삽입 ----------------
-    # def _handle_insert(self, answers):
-    #     item_id = create_new_item_and_get_id(self.patient_id)
-    #     if not item_id:
-    #         CTkMessagebox(title="API 오류", message="Item 생성 실패", icon="cancel")
-    #         return
-
-    #     success, err = call_api_to_save_data(item_id, answers)
-    #     if success:
-    #         CTkMessagebox(title="성공", message="새 설문이 등록되었습니다.", icon="check")
-    #         if callable(self.on_close_callback):
-    #             self.on_close_callback()  # ✅ 신규 입력 후도 리로드
-    #     else:
-    #         CTkMessagebox(title="오류", message=err, icon="cancel")
+    # ---------------- 신규 등록 모드 ----------------
     def _handle_insert(self, answers):
         """새로운 설문 데이터를 서버에 저장하는 로직 (간단한 필수값 검증 포함)"""
 
@@ -296,7 +282,7 @@ class HealthSurveyForm(ctk.CTkFrame):
                 CTkMessagebox(title="API 오류", message="Item 생성 실패", icon="cancel")
                 return
 
-            success, err = call_api_to_save_data(item_id, answers)
+            success, err = save_mds_answers(item_id, answers)
             
 
             if success:
@@ -433,11 +419,11 @@ class HealthSurveyForm(ctk.CTkFrame):
                 return
     
             # ✅ 서버에 업데이트 요청
-            success, err = call_api_to_update_data(updated)
+            success, err = update_mds_answers(updated)
             if success:
                 # ✅ item의 update_ts, is_updated 갱신
                 try:
-                    from api.form_api import mark_item_updated
+                    from CHU_LOCAL.data_input_app.api_local.form_api_local import mark_item_updated
                     mark_item_updated(item_id)
                 except Exception as e:
                     print(f"[WARN] item 업데이트 실패: {e}")

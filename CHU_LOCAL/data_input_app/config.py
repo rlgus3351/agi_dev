@@ -33,3 +33,4 @@ LOG_FILE = "app.log"
 
 # 로컬 경로
 LOCAL_UPLOAD_DIR = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
+VIDEO_SAVE_BASE = r"C:\Users\user\Desktop\DEV_AGI\parkinson\video"

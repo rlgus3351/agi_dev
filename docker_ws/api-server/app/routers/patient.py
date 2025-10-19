@@ -45,6 +45,7 @@ def read_patients_by_hospital(institution: str, db: Session = Depends(get_db)):
         SELECT *
         FROM tb_patient_info
         WHERE institution = :institution
+                 
         ORDER BY created_ts DESC
     """)
     result = db.execute(query, {"institution": institution}).fetchall()
