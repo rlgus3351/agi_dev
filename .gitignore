@@ -32,3 +32,10 @@
 /CHU_LOCAL/test/__pycache__/
 /CHU_LOCAL/test/data/output/*
 /CHU_LOCAL/test/data/json/*
+
+/external_data_scheduler/Parkinson/*
+/external_data_scheduler/Depression/*
+/external_data_scheduler/__pycache__/
+/external_data_scheduler/venv/Lib/*
+/external_data_scheduler/venv/Scripts/*
+/external_data_scheduler/venv/Include/*
