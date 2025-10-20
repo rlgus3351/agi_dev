@@ -1,75 +1,68 @@
 """
 config.py
 ----------------------------------------
-공통 API 엔드포인트 및 환경 설정 파일
-(로컬·서버 환경 모두 쉽게 전환 가능)
+로컬 환경용 PostgreSQL 설정 파일
+(인터넷 없이도 완전 독립 동작)
 ----------------------------------------
 """
 
-# ============================================================
-# 🌐 기본 API 서버 설정
-# ============================================================
-
-# ✅ 로컬/서버 환경 전환 스위치
-USE_LOCALHOST = False   # True면 localhost, False면 내부망 IP 사용
-
-if USE_LOCALHOST:
-    API_HOST = "localhost"
-else:
-    API_HOST = "121.178.59.41"
-
-API_PORT = 30000
-API_URL = f"http://{API_HOST}:{API_PORT}/"
+import os
 
 # ============================================================
-# 🩺 엔드포인트 별 Base URL
+# 🗄️ PostgreSQL DB 설정
 # ============================================================
 
-HEALTH_URL = API_URL + "health"
-PATIENTS_BASE_URL = API_URL + "patients/"
-ITEMS_BASE_URL = API_URL + "items/"
-FORM_BASE_URL = API_URL + "mds/"
-VIDEO_BASE_URL = API_URL + "video/"
-PROCESS_BASE_URL = API_URL + "processing/"
+DB_HOST = "127.0.0.1"        # 로컬 DB 서버
+DB_PORT = 5432               # 기본 포트
+DB_NAME = "agi_dev"          # 실제 DB 이름
+DB_USER = "postgres"         # DB 사용자명
+DB_PASSWORD = "rkskekfk1!"   # PostgreSQL 비밀번호
+
+# ✅ SQLAlchemy / psycopg2 연결용 URL
+DATABASE_URL = (
+    f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    f"?options=-csearch_path%3Ddev_kkh"
+)
+
+DB_CONFIG = {
+    "host": DB_HOST,
+    "port": DB_PORT,
+    "dbname": DB_NAME,
+    "user": DB_USER,
+    "password": DB_PASSWORD,
+}
 
 # ============================================================
-# 💾 NAS 연결 설정 (비식별화 모듈 전용)
-# ============================================================
-
-NAS_URL = "https://121.147.253.141:5001"
-USERNAME = "ai03"
-PASSWORD = "Rkskekfk1!"
-
-# ============================================================
-# 🏥 기관 기본 설정
+# ⚙️ 로컬 앱 기본 설정
 # ============================================================
 
 INSTITUTION = "CNU"
-
-# ============================================================
-# 📁 파일 관련 경로 설정
-# ============================================================
-
-# 로컬 업로드 폴더 (CustomTkinter 앱 기준)
-LOCAL_UPLOAD_DIR = "C:/TeamGit/agi_dev/uploads"
-
-# 비디오 업로드 서버 폴더
-VIDEO_UPLOAD_PATH = "/data/uploads"
-
-# ============================================================
-# ⚙️ 기타 설정
-# ============================================================
-
-REQUEST_TIMEOUT = 10
 DEBUG_MODE = True
 LOG_FILE = "app.log"
+
+# ============================================================
+# 📁 로컬 파일 경로 설정
+# ============================================================
+
+# ✅ 비디오 기본 저장 경로
+VIDEO_SAVE_BASE = r"C:\Users\user\Desktop\DEV_AGI\parkinson\video"
+
+# ✅ 업로드 및 출력 경로
+LOCAL_UPLOAD_DIR = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
+
+# ✅ 비디오 비식별화 / 검증 경로
+WINDOW_PREFIX = LOCAL_UPLOAD_DIR.lower()
+CONTAINER_PREFIX = "/app/input_videos"
+
+# 디렉토리 자동 생성 (없으면 생성)
+os.makedirs(LOCAL_UPLOAD_DIR, exist_ok=True)
+os.makedirs(VIDEO_SAVE_BASE, exist_ok=True)
 
 # ============================================================
 # 🧩 환경 확인 로그
 # ============================================================
 
-print(f"✅ CONFIG 로드 완료 — API_URL={API_URL}")
-print(f"🌐 MODE={'LOCALHOST' if USE_LOCALHOST else 'INTERNAL IP'}")
-
-WINDOW_PREFIX = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video".lower()
-CONTAINER_PREFIX = "/app/input_videos/parkinson/output/video"
+print("✅ CONFIG 로드 완료 — 로컬 PostgreSQL 환경")
+print(f"🗄️ DB: {DB_NAME} ({DB_HOST}:{DB_PORT}, schema=dev_kkh)")
+print(f"📁 VIDEO_SAVE_BASE={VIDEO_SAVE_BASE}")
+print(f"📁 LOCAL_UPLOAD_DIR={LOCAL_UPLOAD_DIR}")

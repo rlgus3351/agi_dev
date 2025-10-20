@@ -1,1 +1,2 @@
 [FAIL] 124 → ❌ 비디오를 열 수 없습니다: /app/input_videos/parkinson/output/video/0f337975-7a8e-4ed4-b935-86db86dce9ba/0f337975-7a8e-4ed4-b935-86db86dce9ba_1.mp4
+[FAIL] 5 → [Errno 2] No such file or directory: 'JSON_PATH/ID-10004_1.json'
