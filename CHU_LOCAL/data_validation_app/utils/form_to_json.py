@@ -1,196 +1,196 @@
 # api_local/mds_updrs_part3_json.py
-from typing import Dict, Any, Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
 from psycopg2.extras import RealDictCursor
 from utils.db_utils import get_connection, release_connection
-import traceback, json
+import json
+import os
 
-# -----------------------------
-# 기초정보/중증도 question_id 매핑 (당신 DB 기준)
-# -----------------------------
-MED_Q = {
-    "is_on_medication":   1,  # 예/아니오
-    "clinical_effect":    2,  # 긍정적/부정적 -> positive/negative
-    "levodopa_taken":     3,  # 예/아니오
-    "levodopa_minutes":   4,  # 분 단위
-    "dyskinesia_present": 6,  # 예/아니오
-    "dyskinesia_interfered": 7,  # 예/아니오
-    "hoehn_yahr_stage":   8,  # (필요시 사용)
+# ─────────────────────────────────────────────────────────────
+# 매핑 정의
+# ─────────────────────────────────────────────────────────────
+
+# question_id  → 필드 매핑 (기초/약물/중증도)
+BASE_MAPPING = {
+    1: ("medication.is_on_medication", "bool_yes_no"),           # 예/아니오 → bool
+    2: ("medication.clinical_effect", "pos_neg_ko"),             # 긍정적/부정적 → positive/negative
+    3: ("medication.levodopa_taken", "bool_yes_no"),
+    4: ("medication.levodopa_elapsed_hours", "minutes_to_hours"),# 분 → 시간(float)
+    # dyskinesia 관련은 5,6,7이 섞여 들어오는 경우가 있어 안전하게 후처리로 결정
+    8: ("stage.hoehn_yahr", "number"),                           # 0/1/1.5/…/5
 }
 
-# 항목 이름 (item_id = question_id - 8)
-ITEM_NAMES: Dict[int, str] = {
-    1: "말하기",
-    2: "얼굴 표정",
-    3: "관절의 뻣뻣함",
-    4: "손가락 부딪치기",
-    5: "손 동작",
-    6: "손 내전/외전 움직임",
-    7: "발가락으로 두드리기",
-    8: "다리 민첩성",
-    9: "의자에서 일어나기",
-    10: "걷는 자세",
-    11: "걷는 중 몸의 굳어짐",
-    12: "자세의 안정",
-    13: "자세",
-    14: "움직임에서 전반적인 자연스러움",
-    15: "자세 유지시 손의 떨림",
-    16: "움직일 때 손의 떨림",
-    17: "가만 있을 때 떨림의 폭",
-    18: "가만 있을 때 떨림의 지속시간",
+# 항목(9~26) question_id → (항목ID, 항목명, 그룹키셋 혹은 None)
+ITEMS_MAPPING = {
+    9:  (1,  "말하기", None),
+    10: (2,  "얼굴 표정", None),
+    11: (3,  "관절의 뻣뻣함", ["Neck", "RA", "LA", "RL", "LL"]),
+    12: (4,  "손가락 부딪치기", ["L", "R"]),
+    13: (5,  "손 동작", ["L", "R"]),
+    14: (6,  "손 내전/외전 움직임", ["L", "R"]),
+    15: (7,  "발가락으로 두드리기", ["L", "R"]),
+    16: (8,  "다리 민첩성", ["L", "R"]),
+    17: (9,  "의자에서 일어나기", None),
+    18: (10, "걷는 자세", None),
+    19: (11, "걷는 중 몸의 굳어짐", None),
+    20: (12, "자세의 안정", None),
+    21: (13, "자세", None),
+    22: (14, "움직임에서 전반적인 자연스러움", None),
+    23: (15, "자세 유지시 손의 떨림", ["L", "R"]),
+    24: (16, "움직일 때 손의 떨림", ["L", "R"]),
+    25: (17, "가만 있을 때 떨림의 폭", ["RA", "LA", "RL", "LL", "LJ"]),
+    26: (18, "가만 있을 때 떨림의 지속시간", None),
 }
 
-def _to_int(v) -> Optional[int]:
-    try:
-        return int(str(v).strip())
-    except Exception:
-        return None
+YES_SET = {"예", "yes", "y", "true", "True", True}
+POS_KO_TO_EN = {"긍정적": "positive", "부정적": "negative"}
 
-def _to_float(v) -> Optional[float]:
-    try:
-        return float(str(v).strip())
-    except Exception:
-        return None
+def _set_nested(d: Dict[str, Any], dotted_key: str, value: Any):
+    """ 'a.b.c' 키 경로에 값 설정 """
+    cur = d
+    parts = dotted_key.split(".")
+    for p in parts[:-1]:
+        if p not in cur or not isinstance(cur[p], dict):
+            cur[p] = {}
+        cur = cur[p]
+    cur[parts[-1]] = value
 
-def _to_bool(v) -> Optional[bool]:
-    if v is None:
+def _coerce(value: Optional[str], how: str):
+    if value is None:
         return None
-    s = str(v).strip().lower()
-    if s in {"1", "true", "t", "yes", "y", "예"}:
-        return True
-    if s in {"0", "false", "f", "no", "n", "아니오"}:
-        return False
-    return None
+    s = str(value).strip()
+    if how == "bool_yes_no":
+        return s in YES_SET
+    if how == "pos_neg_ko":
+        return POS_KO_TO_EN.get(s, s)  # 모르면 원문 유지
+    if how == "minutes_to_hours":
+        try:
+            minutes = float(s)
+            return round(minutes / 60.0, 2)
+        except Exception:
+            return None
+    if how == "number":
+        try:
+            return float(s) if "." in s else int(s)
+        except Exception:
+            return None
+    # 기본: 원문 반환
+    return s
 
-def _clinical_to_en(v) -> Optional[str]:
-    if v is None:
-        return None
-    s = str(v).strip().lower()
-    if s in {"긍정적", "positive", "pos"}:
-        return "positive"
-    if s in {"부정적", "negative", "neg"}:
-        return "negative"
-    return None
-
-def build_mds_updrs_part3_json(item_id: int) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+# ─────────────────────────────────────────────────────────────
+# 메인 함수: DB → 원하는 JSON 구조
+# ─────────────────────────────────────────────────────────────
+def build_mds_updrs_part3_json(item_id: int) -> Tuple[Optional[dict], Optional[str]]:
     """
-    dev_kkh.tb_questionnaire_answers의 (item_id) 응답을
-    원하는 JSON 포맷으로 변환.
-    반환: (json_dict | None, error | None)
+    tb_questionnaire_answers의 (item_id) 응답을 읽어 Part3 JSON을 만든다.
+    반환: (dict or None, error_message or None)
     """
+    from psycopg2.extras import RealDictCursor
+    from utils.db_utils import get_connection, release_connection
+
     conn = None
     try:
         conn = get_connection()
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
-                SELECT question_id, answer_component, answer_value, submission_datetime
+                SELECT answer_id, item_id, question_id, answer_component, answer_value, submission_datetime
                 FROM dev_kkh.tb_questionnaire_answers
                 WHERE item_id = %s
-                ORDER BY COALESCE(submission_datetime, NOW()) ASC, answer_id ASC;
+                ORDER BY answer_id ASC
             """, (item_id,))
             rows = cur.fetchall()
 
         if not rows:
-            return None, "해당 item_id 설문 응답 없음"
+            return None, "해당 item_id의 응답이 없습니다."
 
-        # (question_id, component) 기준 최신값만 유지
-        latest: Dict[Tuple[int, Optional[str]], Dict[str, Any]] = {}
-        for r in rows:
-            key = (r["question_id"], (r["answer_component"] or None))
-            latest[key] = r
-
-        # -------------------------
-        # A) medication / dyskinesia
-        # -------------------------
-        med = {}
-        dysk = {}
-
-        v = latest.get((MED_Q["is_on_medication"], None), {}).get("answer_value")
-        b = _to_bool(v)
-        if b is not None:
-            med["is_on_medication"] = b
-
-        v = latest.get((MED_Q["clinical_effect"], None), {}).get("answer_value")
-        ce = _clinical_to_en(v)
-        if ce is not None:
-            med["clinical_effect"] = ce
-
-        v = latest.get((MED_Q["levodopa_taken"], None), {}).get("answer_value")
-        b = _to_bool(v)
-        if b is not None:
-            med["levodopa_taken"] = b
-
-        v = latest.get((MED_Q["levodopa_minutes"], None), {}).get("answer_value")
-        m = _to_float(v)
-        if m is not None:
-            med["levodopa_elapsed_hours"] = round(m / 60.0, 2)
-
-        v = latest.get((MED_Q["dyskinesia_present"], None), {}).get("answer_value")
-        b = _to_bool(v)
-        if b is not None:
-            dysk["dyskinesia_present"] = b
-
-        v = latest.get((MED_Q["dyskinesia_interfered"], None), {}).get("answer_value")
-        b = _to_bool(v)
-        if b is not None:
-            dysk["dyskinesia_interfered"] = b
-
-        # (참고) 필요하면 stage도 여기서 읽어올 수 있음:
-        # stage_raw = latest.get((MED_Q["hoehn_yahr_stage"], None), {}).get("answer_value")
-
-        # -------------------------
-        # B) 9~26 → item 1~18 매핑
-        # -------------------------
-        items = []
-        for qid in range(9, 27):                # 9..26
-            item_idx = qid - 8                  # 1..18
-            item_name = ITEM_NAMES.get(item_idx, f"항목 {item_idx}")
-
-            # 후보 키 찾기
-            comps = [(qq, comp) for (qq, comp) in latest.keys() if qq == qid]
-            if not comps:
-                continue
-
-            comp_scores: Dict[str, int] = {}
-            single_score: Optional[int] = None
-
-            for (_qq, comp) in comps:
-                val = latest.get((_qq, comp), {}).get("answer_value")
-                score = _to_int(val)
-                if score is None:
-                    continue
-                if comp is None:
-                    single_score = score
-                else:
-                    comp_scores[comp] = score
-
-            entry = {"item_id": item_idx, "item_name": item_name}
-            if comp_scores:
-                entry["scores"] = comp_scores
-            elif single_score is not None:
-                entry["scores"] = single_score
-            else:
-                continue
-
-            items.append(entry)
-
+        # 결과 스켈레톤
         result = {
             "mds_updrs_part3": {
-                "medication": med,
-                "dyskinesia_impact": dysk,
-                "items": items
+                "medication": {
+                    "is_on_medication": None,
+                    "clinical_effect": None,
+                    "levodopa_taken": None,
+                    "levodopa_elapsed_hours": None,
+                },
+                "dyskinesia_impact": {
+                    "dyskinesia_present": None,
+                    "dyskinesia_interfered": None,
+                },
+                "items": []
             }
         }
+
+        # 항목 채우기용 버퍼: item_id(1~18) → dict
+        items_buf: Dict[int, Dict[str, Any]] = {}
+
+        # dyskinesia 판단을 위한 임시 플래그
+        dys_flags = {
+            5: None,  # (폼상) DYSKINESIA 질문
+            6: None,  # 검사지 영향 여부
+            7: None,  # 검사 중 dyskinesia 유무
+        }
+
+        # 1차 스캔
+        for r in rows:
+            qid = r["question_id"]
+            comp = r["answer_component"]  # RA/LA/L/R/Neck...
+            val  = r["answer_value"]
+
+            # 1) 베이스 매핑 (1~4, 8)
+            if qid in BASE_MAPPING:
+                key, how = BASE_MAPPING[qid]
+                coerced = _coerce(val, how)
+                _set_nested(result["mds_updrs_part3"], key, coerced)
+                continue
+
+            # 2) dyskinesia 관련(5/6/7) — 후처리
+            if qid in dys_flags:
+                dys_flags[qid] = (val in YES_SET)
+                continue
+
+            # 3) 항목 점수 (9~26)
+            if qid in ITEMS_MAPPING:
+                sub_id, sub_name, sides = ITEMS_MAPPING[qid]
+                if sub_id not in items_buf:
+                    items_buf[sub_id] = {"item_id": sub_id, "item_name": sub_name, "scores": {} if sides else None}
+
+                if sides:
+                    # 그룹형: comp별 점수 축적
+                    if comp is None or comp == "":
+                        continue  # 그룹인데 comp 없으면 스킵
+                    try:
+                        score = int(val)
+                    except Exception:
+                        continue
+                    items_buf[sub_id]["scores"][comp] = score
+                else:
+                    # 단일 점수
+                    try:
+                        score = int(val)
+                    except Exception:
+                        score = None
+                    items_buf[sub_id]["scores"] = score
+
+        # dyskinesia 최종 결정 (데이터가 5/6/7로 들어올 수 있어 유연하게 처리)
+        present = any(flag is True for q, flag in dys_flags.items() if q in (5, 7))
+        interfered = (dys_flags.get(6) is True) or (dys_flags.get(5) is True and dys_flags.get(7) is True)
+        result["mds_updrs_part3"]["dyskinesia_impact"]["dyskinesia_present"] = present
+        result["mds_updrs_part3"]["dyskinesia_impact"]["dyskinesia_interfered"] = interfered
+
+        # items 정렬(1~18) 후 리스트로 삽입
+        for k in sorted(items_buf.keys()):
+            result["mds_updrs_part3"]["items"].append(items_buf[k])
+
         return result, None
 
     except Exception as e:
-        print("❌ build_mds_updrs_part3_json 실패:", e)
-        traceback.print_exc()
-        return None, str(e)
+        return None, f"JSON 빌드 실패: {e}"
     finally:
         if conn:
             release_connection(conn)
 
-# 옵션: 파일로 저장하고 싶을 때
-def save_json_to_file(obj: Dict[str, Any], path: str) -> None:
+# 파일 저장 헬퍼(선택)
+def save_json_to_file(data: dict, path: str) -> str:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return path

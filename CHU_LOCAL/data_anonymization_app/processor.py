@@ -35,8 +35,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 FINAL_VIDEO_DIR = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
 
-VIDEO_PATH =r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
-JSON_PATH = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\json"
+VIDEO_PATH = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
+JSON_PATH  = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\json"
 
 if device == "cuda":
     try:
@@ -49,13 +49,21 @@ else:
 
 model = YOLO(model_path)
 try:
-    # 일부 버전에선 내부적으로 무시될 수 있으므로, predict에서 device도 함께 전달함
     model.to(device)
 except Exception:
     pass
 
 print(f"✅ YOLO 모델 로드 완료 (device={device})")
 
+# ----------------------------------------
+# 🔧 탐지/암호화 튜닝 파라미터
+# ----------------------------------------
+DETECT_CONF = 0.35            # YOLO 탐지 최소 신뢰도(상향)
+MIN_ENCRYPT_CONF = 0.30       # JSON에 복구용 ROI로 담는 최소 신뢰도
+IOU = 0.5                     # NMS IOU
+EXPAND_RATIO = 0.20           # bbox 확장(옆얼굴 커버)
+MAX_HOLD_FRAMES = 3           # 탐지 끊김 시 이전 bbox 유지 프레임 수
+MOSAIC_BLOCK_DIVISOR = 20     # 모자이크 블록 크기(값↑ = 블록↑)
 
 # ----------------------------------------
 # ✅ SHA256 해시 계산
@@ -66,7 +74,6 @@ def sha256_file(path: str) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             sha.update(chunk)
     return sha.hexdigest()
-
 
 # ----------------------------------------
 # ✅ 오디오 병합 함수
@@ -89,19 +96,16 @@ def merge_audio_with_video(original_video, anonymized_video):
         print(f"⚠️ 오디오 병합 실패: {process.stderr.decode()}")
     return output_with_audio
 
-
 # ----------------------------------------
 # ✅ 상태 업데이트 API
 # ----------------------------------------
 def update_anonymization_status(video_id: int):
     try:
-        # FastAPI 호출 대신 로컬 DB 업데이트
         ts = datetime.utcnow()
         update_processed_video(video_metadata_id=video_id, anonymized_ts=ts, is_anonymized=True)
         print(f"✅ is_anonymized 업데이트 완료 (video_id={video_id})")
     except Exception as e:
         print(f"❌ 상태 업데이트 실패: {e}")
-
 
 def get_display_id_from_item(item_id: int):
     try:
@@ -133,7 +137,6 @@ def get_display_id_from_item(item_id: int):
         print(f"❌ display_id 조회 실패: {e}")
         return None, None
 
-
 # ----------------------------------------
 # ✅ 실패 로그 저장
 # ----------------------------------------
@@ -142,6 +145,42 @@ def log_failure(video_id_or_path: str, error_msg: str):
     with open("logs/error_log.txt", "a", encoding="utf-8") as f:
         f.write(f"[FAIL] {video_id_or_path} → {error_msg}\n")
 
+# ----------------------------------------
+# 🔧 bbox 보정(확장 + 프레임 경계 클리핑)
+# ----------------------------------------
+def _adjust_bbox(x1, y1, x2, y2, W, H, pad_ratio=EXPAND_RATIO):
+    x1, x2 = sorted((int(x1), int(x2)))
+    y1, y2 = sorted((int(y1), int(y2)))
+    w = x2 - x1
+    h = y2 - y1
+    pw = max(1, int(w * pad_ratio))
+    ph = max(1, int(h * pad_ratio))
+    x1 -= pw; y1 -= ph; x2 += pw; y2 += ph
+    x1 = max(0, min(W - 1, x1)); y1 = max(0, min(H - 1, y1))
+    x2 = max(0, min(W,     x2)); y2 = max(0, min(H,     y2))
+    if x2 <= x1 + 1: x2 = min(W, x1 + 2)
+    if y2 <= y1 + 1: y2 = min(H, y1 + 2)
+    return x1, y1, x2, y2
+
+# ----------------------------------------
+# 🔒 PNG 인코딩 후 AES-GCM 암호화
+# ----------------------------------------
+def _encrypt_roi_png(roi_bgr):
+    ok, buf = cv2.imencode('.png', roi_bgr)
+    if not ok:
+        raise ValueError("ROI PNG 인코딩 실패")
+    data = buf.tobytes()
+
+    key = os.urandom(32)   # 256-bit
+    iv  = os.urandom(12)   # 96-bit (GCM 권장)
+    aes = AESGCM(key)
+    ct  = aes.encrypt(iv, data, None)
+
+    return (
+        base64.b64encode(key).decode(),
+        base64.b64encode(iv).decode(),
+        base64.b64encode(ct).decode()
+    )
 
 def process_video(meta: dict):
     raw_path = meta["file_path"]
@@ -196,10 +235,10 @@ def process_video(meta: dict):
         total_roi_count = 0
         total_encrypted = 0
 
-        # ✅ ROI 유지 로직 변수 (복구 보장: holdover라도 현재 프레임의 ROI를 암호화해서 기록)
-        prev_rois = []            # 직전 프레임 bbox 리스트 [[x1,y1,x2,y2], ...]
+        # ✅ ROI 유지 로직 변수 (홀도버: 탐지 끊김 시 복구 보장)
+        prev_rois = []            # [[x1,y1,x2,y2], ...]
         hold_counter = 0
-        max_hold_frames = 3       # 유지할 최대 프레임 수
+        max_hold_frames = MAX_HOLD_FRAMES
 
         with tqdm(total=frame_count, desc=f"🔄 {filename} 비식별화 진행중", ncols=110) as pbar:
             for idx in range(frame_count):
@@ -207,112 +246,90 @@ def process_video(meta: dict):
                 if not ret:
                     break
 
-                # ✅ YOLO 감지 (조금 느슨하게)
-                #  - conf 낮춰 옆모습 탐지율 ↑
-                results = model.predict(source=frame, conf=0.15, device=device, verbose=False)
+                # 1) YOLO 탐지 (conf 상향)
+                results = model.predict(
+                    source=frame,
+                    conf=DETECT_CONF,
+                    iou=IOU,
+                    device=device,
+                    verbose=False
+                )
 
-                # 후보 박스 수집
                 current_rois = []
                 for r in results:
                     if not hasattr(r, "boxes") or r.boxes is None:
                         continue
-                    expand_ratio = 0.2
                     for box in r.boxes:
-                        # 너무 낮은 건 제외 (극저신뢰 오탐 컷)
-                        conf_score = float(box.conf[0]) if hasattr(box, "conf") else 1.0
-                        if conf_score < 0.10:
+                        conf_score = float(getattr(box, "conf", [1.0])[0])
+                        if conf_score < DETECT_CONF:
                             continue
-
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        w, h = x2 - x1, y2 - y1
-                        if w <= 0 or h <= 0:
-                            continue
-
-                        # 약간 확장 (옆얼굴 커버)
-                        expand_w, expand_h = int(w * expand_ratio), int(h * expand_ratio)
-                        x1 = max(0, x1 - expand_w)
-                        y1 = max(0, y1 - expand_h)
-                        x2 = min(width,  x2 + expand_w)
-                        y2 = min(height, y2 + expand_h)
                         if x2 <= x1 or y2 <= y1:
                             continue
+                        # 옆모습 커버를 위해 bbox 확장 + 프레임 경계 클리핑
+                        x1, y1, x2, y2 = _adjust_bbox(x1, y1, x2, y2, width, height, pad_ratio=EXPAND_RATIO)
+                        current_rois.append((x1, y1, x2, y2, conf_score))
 
-                        current_rois.append([x1, y1, x2, y2])
-
-                # ✅ 감지 안되면 이전 ROI 유지(holdover) — 복구 가능하도록 현재 프레임 ROI를 암호화/기록함
+                # 2) 감지 끊김 시 홀도버(현재 프레임에도 암호화/기록)
                 source_tag = "yolo"
                 if not current_rois and prev_rois and hold_counter < max_hold_frames:
-                    current_rois = [r.copy() for r in prev_rois]
+                    current_rois = [(x1, y1, x2, y2, MIN_ENCRYPT_CONF) for (x1, y1, x2, y2) in prev_rois]
                     hold_counter += 1
                     source_tag = "holdover"
                 else:
-                    prev_rois = [r.copy() for r in current_rois]
+                    prev_rois = [(x1, y1, x2, y2) for (x1, y1, x2, y2, _) in current_rois]
                     hold_counter = 0
                     source_tag = "yolo"
 
+                # 3) 암호화/모자이크/로그
                 rois_data = []
-                for bbox in current_rois:
-                    x1, y1, x2, y2 = bbox
+                for (x1, y1, x2, y2, conf_score) in current_rois:
                     roi = frame[y1:y2, x1:x2]
-                    if roi.size == 0:
-                        # 그래도 “기록”은 남겨 복구 로그 일관성 유지
-                        rois_data.append({
-                            "uuid": str(uuid.uuid4()),
-                            "bbox": [x1, y1, x2, y2],
-                            "key": None,
-                            "iv": None,
-                            "encrypted_roi": None,
-                            "restorable": False,
-                            "source": source_tag
-                        })
-                        continue
-
-                    total_roi_count += 1
-
-                    roi_data = {
+                    rec = {
                         "uuid": str(uuid.uuid4()),
-                        "bbox": [x1, y1, x2, y2],
+                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
                         "key": None,
                         "iv": None,
                         "encrypted_roi": None,
                         "restorable": False,
-                        "source": source_tag
+                        "source": source_tag,
+                        "conf": float(conf_score)
                     }
 
-                    # ✅ 복구 보장: 현재 프레임의 ROI를 반드시 암호화해서 JSON에 저장
+                    if roi.size > 0 and conf_score >= MIN_ENCRYPT_CONF:
+                        try:
+                            key_b64, iv_b64, enc_b64 = _encrypt_roi_png(roi)
+                            rec["key"] = key_b64
+                            rec["iv"] = iv_b64
+                            rec["encrypted_roi"] = enc_b64
+                            rec["restorable"] = True
+                            total_encrypted += 1
+                        except Exception as e:
+                            rec["restorable"] = False
+                            rec["skip_reason"] = f"encrypt_fail:{str(e)}"
+                    else:
+                        if roi.size == 0:
+                            rec["skip_reason"] = "empty_crop"
+                        elif conf_score < MIN_ENCRYPT_CONF:
+                            rec["skip_reason"] = "low_conf"
+
+                    # 모자이크(영상 익명화)
                     try:
-                        key = os.urandom(32)   # 256-bit
-                        iv  = os.urandom(12)   # 96-bit nonce
-                        aes = AESGCM(key)
-
-                        success, roi_bytes = cv2.imencode('.png', roi)
-                        if not success:
-                            raise ValueError("ROI 인코딩 실패")
-
-                        encrypted = aes.encrypt(iv, roi_bytes.tobytes(), None)
-                        total_encrypted += 1
-
-                        roi_data["key"] = base64.b64encode(key).decode()
-                        roi_data["iv"]  = base64.b64encode(iv).decode()
-                        roi_data["encrypted_roi"] = base64.b64encode(encrypted).decode()
-                        roi_data["restorable"] = True
+                        roi_w, roi_h = x2 - x1, y2 - y1
+                        mw = max(1, roi_w // MOSAIC_BLOCK_DIVISOR)
+                        mh = max(1, roi_h // MOSAIC_BLOCK_DIVISOR)
+                        if roi.size > 0:
+                            small = cv2.resize(roi, (mw, mh))
+                            mosaic = cv2.resize(small, (roi_w, roi_h), interpolation=cv2.INTER_NEAREST)
+                            frame[y1:y2, x1:x2] = mosaic
                     except Exception as e:
-                        print(f"⚠️ ROI 암호화 실패 (frame {idx}): {e}")
+                        rec.setdefault("skip_reason", "")
+                        rec["skip_reason"] += f"|mosaic_fail:{str(e)}"
 
-                    # ✅ 모자이크 적용 (복구 위해 JSON에 같은 bbox를 기록했으므로 복원 가능)
-                    roi_w, roi_h = x2 - x1, y2 - y1
-                    mosaic_w = max(1, roi_w // 20)
-                    mosaic_h = max(1, roi_h // 20)
-                    try:
-                        small = cv2.resize(roi, (mosaic_w, mosaic_h))
-                        mosaic = cv2.resize(small, (roi_w, roi_h), interpolation=cv2.INTER_NEAREST)
-                        frame[y1:y2, x1:x2] = mosaic
-                    except Exception as e:
-                        print(f"⚠️ 모자이크 적용 실패 (frame {idx}): {e}")
+                    rois_data.append(rec)
+                    total_roi_count += 1
 
-                    rois_data.append(roi_data)
-
-                # ✅ 프레임별 기록 (빈 리스트라도 항상 기록해 복호화 시 프레임 정합성 유지)
+                # 프레임별 기록 (빈 리스트라도 기록)
                 roi_log["frames"][f"frame_{idx:05d}"] = rois_data
                 if rois_data:
                     total_detected_frames += 1
@@ -324,8 +341,8 @@ def process_video(meta: dict):
         out.release()
         end_time = datetime.utcnow()
 
-        # ✅ 오디오 병합 (원본 오디오 유지)
-        output_final_path = merge_audio_with_video(input_path, FINAL_VIDEO_DIR)
+        # ✅ 오디오 병합 (원본 오디오 유지) — 호출 인자 수정: (원본, 익명화경로)
+        output_final_path = merge_audio_with_video(original_video=input_path, anonymized_video=output_path)
 
         # ✅ JSON 저장
         with open(json_path, "w", encoding="utf-8") as f:
@@ -337,8 +354,8 @@ def process_video(meta: dict):
         if video_id:
             update_anonymization_status(video_id)
 
-        # ✅ NAS 업로드 (재시도 포함) — 외부 함수는 기존 코드/모듈에 정의되어 있어야 함
-        sid = None
+        # ✅ NAS 업로드 (필요 시 주석 해제)
+        # sid = None
         # try:
         #     print(f"🛰️ NAS 업로드 준비 중... (video: {output_final_path}, json: {json_path})")
         #     sid = nas_login()
@@ -372,7 +389,6 @@ def process_video(meta: dict):
         log_failure(video_id or input_path, str(e))
         raise
 
-
 # ----------------------------------------
 # ✅ 전처리 결과 저장 (로컬 DB 버전)
 # ----------------------------------------
@@ -390,8 +406,8 @@ def save_preprocessing_result(meta: dict, output_path: str, json_path: str,
             "original_file_path": meta.get("file_path"),
             "json_file_path": json_path,
             "encrypted_file_path": output_path,
-            "processing_started_at": start_time,      # datetime 객체 그대로 OK
-            "processing_ended_at": end_time,          # datetime 객체 그대로 OK
+            "processing_started_at": start_time,
+            "processing_ended_at": end_time,
             "processing_duration_sec": round(duration_sec, 2),
             "total_frames": total_frames,
             "encrypted_frames": encrypted_count,

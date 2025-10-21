@@ -11,6 +11,7 @@ from api_local.validation_api_local import (
 from api_local.video_api_local import fetch_video_metadata_by_item_id
 from utils.db_utils import get_connection, release_connection
 from api_local.patient_api_local import fetch_all_patients
+from utils.form_to_json import save_json_to_file,build_mds_updrs_part3_json
 from config import WINDOW_PREFIX
 
 # -----------------------------
@@ -85,6 +86,14 @@ def run_validation_pipeline():
                 stage_result, err = calculate_parkinson_stage(item_id)
                 if stage_result:
                     print(f"[{now_str()}]   ⮑ 중증도 저장됨: {stage_result['stage_value']} ({stage_result['stage_description']})")
+                    json_obj, err = build_mds_updrs_part3_json(item_id)
+                    if json_obj:
+                    # 필요하면 파일로도 저장
+                        out_path = f"./json/{patient_id}_mds_updrs_part3.json"
+                        save_json_to_file(json_obj, out_path)
+                        print(f"📝 설문 JSON 저장: {out_path}")
+                    else:
+                        print(f"⚠️ JSON 생성 실패: {err}")
                 else:
                     print(f"[{now_str()}]   ⚠️ 중증도 저장 실패: {err}")
 

@@ -76,8 +76,8 @@ def main():
     print("     🧩 Face ROI 복호화 프로그램 (AES-GCM)     ")
     print("===========================================\n")
 
-    json_path = "C:\\TeamGit\\agi_dev\\deidentification\\data\\ID-10050_2.json"
-    video_path = "C:\\TeamGit\\agi_dev\\deidentification\\data\\f6222d72-ca36-40b0-97be-c4bc81d2b168_2_final.mp4"
+    json_path = r"C:\TeamGit\agi_dev\CHU_LOCAL\data_anonymization_app\data\json\ID-10003_2.json"
+    video_path = r"C:\TeamGit\agi_dev\CHU_LOCAL\data_anonymization_app\data\output\4b026024-b9cc-43d4-89b0-f9e1c1da39a7_2_final.mp4"
 
     output_dir = os.path.join("output", "restored")
     os.makedirs(output_dir, exist_ok=True)
