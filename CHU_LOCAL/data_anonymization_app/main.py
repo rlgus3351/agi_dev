@@ -53,6 +53,6 @@ if __name__ == "__main__":
         success = run_processing_pipeline()
         if not success:
             print(f"[{now()}] ⏸️ 10분 대기 후 재시작...\n")
-            time.sleep(600)  # 10분 대기
+            time.sleep(60)  # 10분 대기
         else:
             print(f"[{now()}] 🔁 다음 영상 확인 중...\n")

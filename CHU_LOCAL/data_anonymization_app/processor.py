@@ -1,5 +1,5 @@
 from ultralytics import YOLO
-import cv2, os, json, uuid, base64, hashlib, subprocess
+import cv2, os, json, uuid, base64, hashlib, subprocess, shutil
 import numpy as np
 from tqdm import tqdm
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -76,25 +76,83 @@ def sha256_file(path: str) -> str:
     return sha.hexdigest()
 
 # ----------------------------------------
-# ✅ 오디오 병합 함수
+# ✅ ffprobe 유틸
 # ----------------------------------------
-def merge_audio_with_video(original_video, anonymized_video):
-    """원본 영상의 오디오를 익명화된 영상에 병합"""
-    output_with_audio = anonymized_video.replace("_anonymized.mp4", "_final.mp4")
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", anonymized_video,
-        "-i", original_video,
-        "-c:v", "copy", "-c:a", "aac",
-        "-map", "0:v:0", "-map", "1:a:0",
-        output_with_audio
-    ]
-    process = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if process.returncode == 0:
-        print(f"🎵 오디오 포함 영상 생성 완료 → {output_with_audio}")
+def _has_audio_stream(path: str) -> bool:
+    """ffprobe로 오디오 스트림 존재 여부 확인"""
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            path
+        ]
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return bool(r.stdout.strip())
+    except Exception:
+        return False
+
+def _output_with_audio_path(anonymized_video: str, final_dir: Optional[str] = None) -> str:
+    base = os.path.basename(anonymized_video)
+    if base.endswith("_anonymized.mp4"):
+        base = base.replace("_anonymized.mp4", "_final.mp4")
     else:
-        print(f"⚠️ 오디오 병합 실패: {process.stderr.decode()}")
-    return output_with_audio
+        root, ext = os.path.splitext(base)
+        base = f"{root}_final{ext or '.mp4'}"
+    out_dir = final_dir if final_dir else os.path.dirname(anonymized_video)
+    os.makedirs(out_dir, exist_ok=True)
+    return os.path.join(out_dir, base)
+
+def _merge_ffmpeg(original_video: str, anonymized_video: str, out_path: str) -> tuple[bool, str]:
+    """두 번 시도:
+       1) 0:v:0 + 1:a:0 (일반적)
+       2) 0:v:0 + 1:a   (첫 오디오 자동 선택)
+    """
+    common = ["-y", "-c:v", "copy", "-c:a", "aac", "-shortest", "-movflags", "+faststart"]
+    attempts = [
+        ["-i", anonymized_video, "-i", original_video, "-map", "0:v:0", "-map", "1:a:0"] + common + [out_path],
+        ["-i", anonymized_video, "-i", original_video, "-map", "0:v:0", "-map", "1:a"]   + common + [out_path],
+    ]
+    last_err = ""
+    for args in attempts:
+        proc = subprocess.run(["ffmpeg"] + args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            return True, proc.stderr
+        last_err = proc.stderr
+    return False, last_err
+
+def _output_has_audio(path: str) -> bool:
+    return _has_audio_stream(path)
+
+# ----------------------------------------
+# ✅ 오디오 병합 함수(유연 매핑 + 결과 검증)
+# ----------------------------------------
+def merge_audio_with_video(original_video: str, anonymized_video: str, final_dir: Optional[str] = None) -> str:
+    """원본 영상의 오디오를 익명화된 영상에 병합(오디오 존재 확인/유연 매핑/결과 검증 포함)"""
+    # ffmpeg/ffprobe 존재 확인
+    if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
+        print("⚠️ ffmpeg/ffprobe를 찾을 수 없습니다. PATH를 확인하세요.")
+        return anonymized_video
+
+    out_path = _output_with_audio_path(anonymized_video, final_dir)
+
+    # 원본에 오디오 없으면 그대로 반환
+    if not _has_audio_stream(original_video):
+        print("ℹ️ 원본 영상에 오디오 스트림이 없습니다. 비디오만 유지됩니다.")
+        return anonymized_video
+
+    ok, log = _merge_ffmpeg(original_video, anonymized_video, out_path)
+    if not ok:
+        print(f"⚠️ 오디오 병합 실패(두 번 시도):\n{log}")
+        return anonymized_video
+
+    if not _output_has_audio(out_path):
+        print("⚠️ 병합된 파일에 오디오 스트림이 없습니다. 매핑 규칙을 점검하세요.")
+        return anonymized_video
+
+    print(f"🎵 오디오 포함 영상 생성 완료 → {out_path}")
+    return out_path
 
 # ----------------------------------------
 # ✅ 상태 업데이트 API
@@ -341,8 +399,12 @@ def process_video(meta: dict):
         out.release()
         end_time = datetime.utcnow()
 
-        # ✅ 오디오 병합 (원본 오디오 유지) — 호출 인자 수정: (원본, 익명화경로)
-        output_final_path = merge_audio_with_video(original_video=input_path, anonymized_video=output_path)
+        # ✅ 오디오 병합 (원본 오디오 유지) — 결과는 FINAL_VIDEO_DIR에 생성
+        output_final_path = merge_audio_with_video(
+            original_video=input_path,
+            anonymized_video=output_path,
+            final_dir=FINAL_VIDEO_DIR
+        )
 
         # ✅ JSON 저장
         with open(json_path, "w", encoding="utf-8") as f:
@@ -353,21 +415,6 @@ def process_video(meta: dict):
 
         if video_id:
             update_anonymization_status(video_id)
-
-        # ✅ NAS 업로드 (필요 시 주석 해제)
-        # sid = None
-        # try:
-        #     print(f"🛰️ NAS 업로드 준비 중... (video: {output_final_path}, json: {json_path})")
-        #     sid = nas_login()
-        #     success_video = upload_to_nas(sid, output_final_path, nas_folder="/mAGI/CNU_Data/VIDEO")
-        #     success_json  = upload_to_nas(sid, json_path,       nas_folder="/mAGI/JSON")
-        #     if not (success_video and success_json):
-        #         print("⚠️ 일부 NAS 업로드 실패 발생")
-        # except Exception as e:
-        #     print(f"⚠️ NAS 업로드 중 오류 발생: {e}")
-        # finally:
-        #     if sid:
-        #         nas_logout(sid)
 
         nas_video_path = f"/mAGI/CNU_Data/VIDEO/{os.path.basename(output_final_path)}"
         nas_json_path  = f"/mAGI/JSON/{os.path.basename(json_path)}"

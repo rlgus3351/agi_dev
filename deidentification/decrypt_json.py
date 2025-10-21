@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 # ======================================
 # 🔧 고정 설정(원하는 값으로 수정)
 # ======================================
-JSON_PATH     = r"C:\TeamGit\agi_dev\CHU_LOCAL\data_anonymization_app\data\json\ID-10003_2.json"  # 👉 단일 JSON 파일
+JSON_PATH     = r"C:\TeamGit\agi_dev\CHU_LOCAL\data_anonymization_app\data\json\ID-10004_2.json"  # 👉 단일 JSON 파일
 OUTPUT_DIR    = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\preview_video"    # 결과 폴더
 
 # 🔁 프레임/영상 설정 (JSON에 없으면 이 값 사용)
