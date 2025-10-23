@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk 
 import sys
 import os
+import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import shutil
 from datetime import datetime
@@ -54,7 +55,7 @@ def local_db_check():
             return "DB_FAIL"
     except Exception:
         return "CONNECTION_FAIL"
-
+ 
 def init_program():
     """프로그램 첫 실행 시 로컬 DB 상태 확인 (로딩 오버레이 포함)"""
 
@@ -100,7 +101,7 @@ ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("dark-blue")
 
 root = ctk.CTk()
-root.title("파킨슨병 입력 프로그램")
+root.title("우울증 입력 프로그램")
 root.geometry("1100x900")
 
 root.grid_rowconfigure(0, weight=1)
@@ -128,77 +129,6 @@ for i, (h, w) in enumerate(zip(headers, widths)):
 
 table_frame = ctk.CTkFrame(frame_patient)
 table_frame.pack(fill="both", expand=True)
-
-
-def format_mds_answers(raw_answers: list) -> list:
-    """
-    원시 MDS 답변 데이터를 generate_summary가 처리할 수 있는 구조로 변환합니다.
-    (question_id와 answer_value를 추출하고, 다중 답변을 통합합니다.)
-    """
-    grouped_answers = {}
-    
-    for ans in raw_answers:
-        q_id = ans['question_id']
-        answer_value = ans.get('answer_value', 'N/A')
-        answer_comp = ans.get('answer_component')
-        
-        # 1. 'question_id'를 키로 그룹화
-        if q_id not in grouped_answers:
-            grouped_answers[q_id] = {
-                'question_id': q_id,
-                'answers': []
-            }
-        
-        # 2. answer_component가 있으면 '컴포넌트:값' 형태로 저장
-        if answer_comp:
-            answer_str = f"{answer_comp}:{answer_value}"
-        else:
-            answer_str = answer_value
-            
-        grouped_answers[q_id]['answers'].append(answer_str)
-        
-    # 3. 최종 리스트로 변환 (answers 리스트를 하나의 문자열로 결합)
-    formatted_list = []
-    for q_id, data in grouped_answers.items():
-        formatted_list.append({
-            'question_id': q_id,
-            # 다중 답변은 "LA:1 | LL:1 | Neck:1" 같은 형태로 합칩니다.
-            'answer': " | ".join(data['answers']) 
-        })
-        
-    return formatted_list
-
-# ---------------- [새로운 요약 생성 함수] ----------------
-def generate_summary(item_data):
-    """항목 데이터에서 question_id 1번부터 8번까지의 답변을 추출하여 요약을 생성합니다."""
-    
-    # 💡 item_data는 fetch_items의 응답에서 온 항목 데이터라고 가정합니다.
-    # 설문 답변 데이터는 item_data['questions'] 리스트에 저장되어 있다고 가정합니다.
-    questions = item_data.get('questions')
-    if not questions:
-        return "데이터 없음"
-    
-    summary_parts = []
-    # question_id가 1부터 8인 항목만 추출하여 답변을 요약합니다.
-    for q in questions:
-        try:
-            q_id = int(q.get('question_id', 0))
-            if 1 <= q_id <= 8:
-                answer = q.get('answer', 'N/A')
-                # 답변이 너무 길면 잘라내거나, 타입에 따라 포맷팅합니다.
-                if isinstance(answer, (int, float)):
-                    summary_parts.append(f"Q{q_id}:{answer}")
-                elif isinstance(answer, str) and len(answer) > 10:
-                    summary_parts.append(f"Q{q_id}:{answer[:10]}...")
-                else:
-                    summary_parts.append(f"Q{q_id}:{answer}")
-        except ValueError:
-            continue
-            
-    if not summary_parts:
-        return "첫 8개 질문 미응답"
-        
-    return " | ".join(summary_parts)
 
 
 # ---------------- 수집 항목 표시 로직 변경 (요약 및 버튼 분리) ----------------
@@ -356,75 +286,61 @@ def show_survey_items(survey_items):
 
 
 def open_survey_form(item_data=None):
-    """
-    설문지 입력/수정 모달을 엽니다. 모든 설문 관련 동작을 이 함수로 통합합니다.
-    """
     if not selected_patient:
         messagebox.showwarning("환자 선택 필요", "먼저 환자를 선택해주세요.")
         return
 
-    # 모달 설정
     modal = ctk.CTkToplevel(root)
-    
-    # item_data가 비어있지 않고, 'questions' 필드가 있으면 '수정' 모드
-    is_edit_mode = bool(item_data and item_data.get('questions'))
-    
-    # ----------------------------------------------------
-    # ✅ [수정] initial_data 변수를 계산하여 NameError를 방지합니다.
-    initial_form_data = [] # 변수를 초기화하여 NameError 방지
-    
-    if is_edit_mode:
-        # 수정 모드: 원시 데이터 ('questions_raw')를 우선 사용하여 폼을 초기화
-        initial_form_data = item_data.get('questions_raw', []) 
-        
-        # 안전 장치: 'questions_raw'가 비어있다면, 요약용 데이터라도 시도
-        if not initial_form_data:
-            initial_form_data = item_data.get('questions', [])
-            
-        if not initial_form_data:
-             messagebox.showerror("오류", "수정할 상세 설문 데이터가 누락되었습니다.")
-             modal.destroy()
-             return
-    # ----------------------------------------------------
-    
-    modal.title(f"운동성 설문지 {'수정' if is_edit_mode else '입력'}")
-    
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    width = int(screen_width * 0.7)
-    height = int(screen_height * 0.9)
-
-    modal.geometry(f"{width}x{height}")
+    modal.title("설문 입력")
+    modal.geometry("1200x900")
     modal.grab_set()
 
-    # 상단 타이틀
     patient_uuid = selected_patient["patient_id"]
     initials = selected_patient.get("patient_initials", "?")
     item_type = item_data.get('data_type', 'N/A') if item_data else 'N/A'
 
-    ctk.CTkLabel(modal, text=f"📝 운동성 설문지 - {initials} ({item_type})", font=("", 16)).pack(pady=10)
+    ctk.CTkLabel(
+        modal, text=f"📝 설문지 - {initials} ({item_type})", font=("", 16)
+    ).pack(pady=10)
 
-    # ✅ 콜백 전달: 폼이 닫힐 때 환자 데이터 다시 불러오기
+    # ✅ JSON 파일 경로 추출
+    json_file_path = item_data.get("json_file", JSON_FILE)
 
-    survey_form = HealthSurveyForm(
-        modal,
-        json_file=JSON_FILE,
-        patient_id=patient_uuid,
-        initial_data=initial_form_data,
-        item_data=item_data,         # 👈 Item 전체 데이터 전달
-        on_close_callback=reload_after_close  # ✅ 여기 추가
-    )
-    survey_form.pack(fill="both", expand=True, padx=10, pady=10)
+    # ✅ JSON 구조 감지
+    with open(json_file_path, "r", encoding="utf-8") as f:
+        json_data = json.load(f)
 
-    # 모달 닫기 시 캐시를 지우고 목록을 새로고침
-    def on_modal_close():
+# ✅ 정확한 구조 판별 로직
+    if any("sections" in v or "body" in v for v in json_data.values()):
+        is_table_form = True
+    else:
+        is_table_form = False
+
+    # ✅ 폼 종류 분기
+    if is_table_form:
+        print("is_tabel_form")
+        from form.generic_survey import GenericSurveyForm
+        form_frame = GenericSurveyForm(modal, json_file=json_file_path)
+    else:
+        print("not is_tabel_form")
+        from form.survey import HealthSurveyForm
+        form_frame = HealthSurveyForm(
+            modal,
+            json_file=json_file_path,
+            patient_id=patient_uuid,
+            item_data=item_data,
+            on_close_callback=reload_after_close
+        )
+
+    form_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def on_close():
         pid = selected_patient["patient_id"]
         if pid in items_cache:
             del items_cache[pid]
-        
         modal.destroy()
-        
-    modal.protocol("WM_DELETE_WINDOW", on_modal_close)
+
+    modal.protocol("WM_DELETE_WINDOW", on_close)
 
 
 def clear_file_items_area():
@@ -999,42 +915,110 @@ def show_video_player_window(item_id, file_path, error=False):
     ctk.CTkButton(video_window, text="닫기", command=video_window.destroy).pack(pady=10)
 
 def process_items(items):
-    """로드된 전체 항목을 설문과 파일로 분류하여 각 영역에 표시합니다."""
-    survey_items = []
-    file_items = []
-    
-    # 설문 항목은 data_type이 'MDS-UPDRS PART 3'이거나 'FORM'이 포함된 경우로 가정합니다.
-    # 파일 항목은 그 외의 모든 항목으로 간주합니다.
+    """로드된 전체 항목을 설문(3종)과 파일로 분류하여 각 영역에 표시합니다."""
+    # 그룹별 리스트 초기화
+    basic_survey_items = []   # 기초평가
+    emotion_survey_items = [] # 정서설문지
+    sleep_survey_items = []   # 수면설문지
+    file_items = []           # 영상/파일
+
     for item in items:
-        # data_category와 data_type을 대문자로 변환하여 비교 준비
-        data_category = item.get('data_category', '').upper()
-        data_type = item.get('data_type', '').upper()
-        
-        # 1. 설문 항목 분류 기준 설정:
-        # 'FORM', 'MDS-UPDRS', 'SURVEY'를 포함하는 항목은 설문으로 간주
-        is_survey_item = (
-            'FORM' in data_category 
-            or 'MDS-UPDRS' in data_type 
-            or 'SURVEY' in data_type
-        )
-        
-        # 2. VIDEO 항목 분류:
-        # VIDEO 타입이거나, 설문 항목이 아닌 나머지 항목은 파일 항목으로 간주
-        is_file_item = (
-            'VIDEO' in data_type 
-            or not is_survey_item # 설문 외 모든 항목 (이미지, 기타 파일 등)
-        )
-        
-        if is_survey_item:
-            # 설문 항목: score_frame에 표시
-            survey_items.append(item)
-        elif is_file_item:
-            # 파일/미디어 항목 (VIDEO 포함): upload_list_frame에 표시
-            print(is_file_item)
+        data_category = str(item.get('data_category', '')).strip()
+        data_type = str(item.get('data_type', '')).upper()
+        print('item',item)
+        # 설문 분류 기준: data_category 명칭으로 구분
+        if data_type == "B_SURVEY":
+            basic_survey_items.append(item)
+        elif data_type == "E_SURVEY":
+            emotion_survey_items.append(item)
+        elif data_type == "S_SURVEY":
+            sleep_survey_items.append(item)
+        elif "VIDEO" in data_type or "FILE" in data_type:
             file_items.append(item)
-    
-    show_survey_items(survey_items)
-    show_file_items(upload_list_frame, file_items)  # ✅ 수정
+        else:
+            # 혹시 분류 안되는 나머지 → 일단 파일 항목으로
+            file_items.append(item)
+
+    # ---------------- 설문 영역 초기화 ----------------
+    for widget in score_frame.winfo_children():
+        widget.destroy()
+
+    # ---------------- 공통 렌더 함수 ----------------
+    def render_section(title, category_code, survey_list):
+        """
+        각 설문 섹션 출력 + 데이터 없을 경우 '추가하기' 버튼 표시
+        category_code: 'B_SURVEY' / 'E_SURVEY' / 'S_SURVEY'
+        """
+        section_frame = ctk.CTkFrame(score_frame)
+        section_frame.pack(fill="x", pady=(10, 10), padx=10)
+
+        # 제목
+        ctk.CTkLabel(
+            section_frame,
+            text=f"📋 {title}",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color="#1B1C1D"
+        ).pack(anchor="w", pady=(5, 3))
+
+        if survey_list:
+            show_survey_items(survey_list)
+        else:
+            # 안내 문구
+            ctk.CTkLabel(
+                section_frame,
+                text=f"{title} 데이터가 없습니다.",
+                font=("", 13, "italic"),
+                text_color="gray"
+            ).pack(pady=(10, 5))
+
+            # 카테고리별 JSON 파일 매핑
+            json_map = {
+                "기초 평가": [os.path.join(PROJECT_ROOT, "form", "basic_form", "basic.json")],
+                "정서 설문지": [
+                    os.path.join(PROJECT_ROOT, "form", "emotion_form", "phq9.json"),
+                    os.path.join(PROJECT_ROOT, "form", "emotion_form", "MADRS.json"),
+                    os.path.join(PROJECT_ROOT, "form", "emotion_form", "anxiety_disorder.json"),
+                ],
+                "수면 설문지": [
+                    os.path.join(PROJECT_ROOT, "form", "sleep_form", "ISI.json"),
+                    os.path.join(PROJECT_ROOT, "form", "sleep_form", "KESS.json"),
+                    os.path.join(PROJECT_ROOT, "form", "sleep_form", "PSQI.json"),
+                    os.path.join(PROJECT_ROOT, "form", "sleep_form", "MEQ_K.json"),
+                ],
+            }
+
+            # 버튼 클릭 시 첫 JSON 로드 (단일 설문용)
+            def open_default_form():
+                json_files = json_map.get(title, [])
+                if not json_files:
+                    messagebox.showerror("오류", f"{title}에 해당하는 폼을 찾을 수 없습니다.")
+                    return
+
+                json_file = json_files[0]  # 기본 하나만 오픈
+                new_item_data = {
+                    "data_category": "MDD",
+                    "data_type": title,
+                    "seq": 1,
+                    "json_file": json_file,   # ✅ 전달
+                }
+                open_survey_form(new_item_data)
+
+            ctk.CTkButton(
+                section_frame,
+                text=f"➕ {title} 추가하기",
+                font=("", 13, "bold"),
+                fg_color="#007BFF",
+                hover_color="#0056b3",
+                command=open_default_form
+            ).pack(pady=(5, 10))
+
+    # ---------------- 섹션별 출력 ----------------
+    render_section("기초 평가", "B_SURVEY", basic_survey_items)
+    render_section("정서 설문지", "E_SURVEY", emotion_survey_items)
+    render_section("수면 설문지", "S_SURVEY", sleep_survey_items)
+
+    # ---------------- 파일 항목 영역 출력 ----------------
+    show_file_items(upload_list_frame, file_items)
 
 # ---------------- 환자 목록 테이블 로드 ----------------
 def load_patients_table():

@@ -19,8 +19,8 @@ config.py
 DB_HOST = "121.178.59.41"     # 로컬 DB 서버
 DB_PORT = 45432            # 기본 포트
 DB_NAME = "agi_dev"     # 실제 DB 이름
-DB_USER = "postgres"      # DB 사용자명
-DB_PASSWORD = "rkskekfk1!"  # PostgreSQL 비밀번호
+DB_USER = "kkh"      # DB 사용자명
+DB_PASSWORD = "Rkskekfk1!"  # PostgreSQL 비밀번호
 
 
 # SQLAlchemy URL
