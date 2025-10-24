@@ -51,3 +51,7 @@
 /deidentification/venv/Include/*
 /deidentification/venv/Lib/*
 /deidentification/venv/Scripts/*
+
+/voicecrypto/output/*
+/voicecrypto/sample/*
+/voicecrypto/restored/*
