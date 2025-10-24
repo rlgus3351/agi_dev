@@ -88,11 +88,66 @@ def create_new_item_and_get_id(target_patient_id: str) -> Union[int, None]:
         if conn:
             release_connection(conn)
 
+def create_new_item_and_get_id_generic(
+    target_patient_id: str,
+    data_category: str = "MDD",
+    data_type: str = "B-SURVEY",
+    seq: int = 1,
+    description: str = "기초평가"
+) -> Union[int, None]:
+    """
+    ✅ 설문 item 생성 (기초평가 / 정서 / 수면 등 공통)
+    Args:
+        target_patient_id (str): 환자 UUID
+        data_category (str): 질환 구분 (예: 'MDD', 'PD')
+        data_type (str): 데이터 유형 (예: 'B-SURVEY', 'E-SURVEY', 'S-SURVEY')
+        seq (int): 일련번호
+        description (str): 데이터 설명
+    Returns:
+        item_id (int) 또는 None
+    """
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                INSERT INTO dev_kkh.tb_items (
+                    patient_id, data_category, data_type, seq, description, collected_at
+                )
+                VALUES (%s, %s, %s, %s, %s, NOW())
+                RETURNING item_id;
+            """, (
+                target_patient_id,
+                data_category,
+                data_type,
+                seq,
+                description
+            ))
+            item = cur.fetchone()
+            conn.commit()
+            if item:
+                print(f"✅ 새 item 생성 완료: item_id={item['item_id']} ({data_type})")
+                return item["item_id"]
+            else:
+                print("⚠️ item 생성 결과 없음")
+                return None
+
+    except Exception as e:
+        print(f"❌ 설문 item 생성 실패: {e}")
+        traceback.print_exc()
+        return None
+
+    finally:
+        if conn:
+            release_connection(conn)
+
+
+
 
 # ============================================================
 # 2️⃣ 설문 응답 등록 (기존: /mds/{item_id})
 # ============================================================
-def save_mds_answers(item_id: int, answers_list: list) -> Tuple[bool, Union[str, None]]:
+def save_answers(item_id: int, answers_list: list) -> Tuple[bool, Union[str, None]]:
     """
     answers_list = [
         {"question_id": 1, "answer_component": "a", "answer_value": "5"},

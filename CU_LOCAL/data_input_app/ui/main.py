@@ -15,6 +15,7 @@ import time
 import subprocess
 import platform
 from tkvideo import tkvideo
+from utils.survey import format_mds_answers
 # ✅ sys.path 수정
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
@@ -779,26 +780,44 @@ def on_select_patient(patient, row_frame):
                 data_type = item.get("data_type", "").upper()
                 data_category = item.get("data_category", "").upper()
 
-                is_survey_item = (
-                    "FORM" in data_category
-                    or "MDS-UPDRS" in data_type
-                    or "SURVEY" in data_type
-                )
+                # 설문 유형 판별
+                is_basic_survey = data_type == "B-SURVEY"
+                is_emotion_survey = data_type == "E-SURVEY"
+                is_sleep_survey = data_type == "S-SURVEY"
+                is_mds_survey = "MDS-UPDRS" in data_type
+                is_survey_item = is_basic_survey or is_emotion_survey or is_sleep_survey or is_mds_survey
 
+                # ✅ 설문 데이터만 응답 로드
                 if is_survey_item and not item.get("questions"):
                     item_id = item.get("item_id")
                     if item_id:
                         try:
                             detailed_answers_raw = fetch_mds_answers(item_id)
 
-                            # A. 요약용 데이터 생성
-                            detailed_answers_formatted = format_mds_answers(detailed_answers_raw)
+                            # 🧩 각 유형별로 추가 필드 마킹 (UI 분류용)
+                            survey_type = None
+                            if is_basic_survey:
+                                survey_type = "BASIC"
+                            elif is_emotion_survey:
+                                survey_type = "EMOTION"
+                            elif is_sleep_survey:
+                                survey_type = "SLEEP"
+                            elif is_mds_survey:
+                                survey_type = "MDS"
+                            # 응답 가공
+                            detailed_answers_formatted = format_mds_answers(
+                                detailed_answers_raw,
+                                survey_type=survey_type
+                            )
 
-                            # B. 원본/요약 동시 저장
+                            # 원본/요약 저장
                             item["questions_raw"] = detailed_answers_raw
                             item["questions"] = detailed_answers_formatted
+                            item["survey_type"] = survey_type  # ✅ UI 구분용
+
                         except Exception as e:
                             print(f"[경고] item_id={item_id} 설문 상세 로드 실패: {e}")
+
                 enriched_items.append(item)
 
             items_to_process = enriched_items
