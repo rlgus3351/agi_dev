@@ -10,16 +10,16 @@ REM ✅ 1. Move to current directory (script folder)
 cd /d "%~dp0"
 
 REM ✅ 2. Check if virtual environment exists
-if not exist .venv (
+if not exist venv (
     echo ❌ Virtual environment not found.
-    echo ▶ Please run "setup_env.bat" first to create .venv.
+    echo ▶ Please run "setup_env.bat" first to create venv.
     pause
     exit /b
 )
 
 REM ✅ 3. Activate virtual environment
 echo 🔹 Activating virtual environment...
-call .venv\Scripts\activate
+call venv\Scripts\activate
 
 REM ✅ 4. Check decrypt_video.py existence
 if not exist decrypt_video.py (
