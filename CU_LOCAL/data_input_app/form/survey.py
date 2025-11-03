@@ -198,16 +198,39 @@ class HealthSurveyForm(ctk.CTkFrame):
 
         # 🔹 숫자 입력
         elif item_type == "input-number":
-            var = ctk.StringVar()
+            # ✅ 문자열 변수 초기화 (빈 문자열로 시작해야 placeholder 표시됨)
+            var = ctk.StringVar(value="")
             self.data_vars[key] = var
-            ctk.CTkLabel(parent_frame, text=label_text, font=("", 14)).grid(
-                row=row, column=0, sticky="w", padx=10, pady=(10, 0)
+        
+            # ✅ 숫자만 남기기 (trace 기반 필터링)
+            def only_digits(*args, v=var):
+                value = v.get()
+                # 숫자와 빈 문자열만 허용
+                if value != "" and not value.isdigit():
+                    # 숫자가 아닌 문자는 제거
+                    v.set("".join([c for c in value if c.isdigit()]))
+        
+            var.trace_add("write", only_digits)
+        
+            # ✅ 라벨
+            ctk.CTkLabel(
+                parent_frame,
+                text=label_text,
+                font=("", 14)
+            ).grid(row=row, column=0, sticky="w", padx=10, pady=(10, 0))
+        
+            # ✅ 입력창 (placeholder 표시)
+            entry = ctk.CTkEntry(
+                parent_frame,
+                textvariable=var,
+                width=120,
+                placeholder_text=config.get("placeholder", ""),
+                fg_color="white"  # 다크모드에서도 placeholder 가시성 확보
             )
-            ctk.CTkEntry(parent_frame, textvariable=var, width=120,
-                         validate='key', validatecommand=self.vcmd,
-                         placeholder_text=config.get("placeholder", "")).grid(row=row, column=1, sticky="w", padx=10)
+            entry.grid(row=row, column=1, sticky="w", padx=10)
+        
             return row + 1
-
+        
         # 🔹 텍스트 입력
         elif item_type == "input-text":
             var = ctk.StringVar()
