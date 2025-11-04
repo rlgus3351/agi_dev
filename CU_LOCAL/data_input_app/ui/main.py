@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk 
 import sys
 import os
+from pathlib import Path
 import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import shutil
@@ -16,6 +17,7 @@ import subprocess
 import platform
 from tkvideo import tkvideo
 from utils.survey import format_mds_answers
+from typing import Optional, Dict, Any
 # ✅ sys.path 수정
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
@@ -26,11 +28,22 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output", "video")  # ⬅️ 원하는 �
 from api_local.patient_api_local import add_patient, delete_patient, fetch_patients
 from api_local.item_api_local import fetch_items,delete_survey_item,mark_item_updated_local
 from utils.loader import run_with_loading, run_with_loading_popup
-from api_local.form_api_local import fetch_mds_answers
+from api_local.form_api_local import (
+    fetch_mds_answers,
+    EMOTION_QMAP_BY_SEQ,
+    ANXIETY_DISORDER_QUESTION_MAPPING,
+    PHQ9_QUESTION_MAPPING,
+    MADRS_QUESTION_MAPPING,
+      # ✅ 아래 2줄 추가
+    SLEEP_QMAP_BY_SEQ,
+    ISI_QUESTION_MAPPING, 
+    KESS_QUESTION_MAPPING,
+    PSQI_QUESTION_MAPPING, 
+    MEQK_QUESTION_MAPPING,
+    create_new_item_and_get_id_generic)
 from api_local.video_api_local import create_new_item_and_get_id, save_video_metadata,fetch_video_metadata_by_item_id,update_video_metadata
 from form.survey import HealthSurveyForm
 from utils.videometa import get_video_metadata
-
 from config import INSTITUTION, VIDEO_SAVE_BASE
 from utils.db_utils import get_connection, release_connection
 from sqlalchemy import text
@@ -39,7 +52,26 @@ JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'basic_form', 'basic.json')
 JSON_FILE = os.path.abspath(JSON_FILE)  # ← 절대경로로 변환 (안전)
 
 items_cache = {} # 환자별 수집 항목 캐시
+EMOTION_TITLES_BY_SEQ = {1: "PHQ-9", 2: "MADRS", 3: "불안증상"}
+EMOTION_FORMS_BY_SEQ = {
+    1: os.path.join(PROJECT_ROOT,"form","emotion_form","phq9.json"),
+    2: os.path.join(PROJECT_ROOT,"form","emotion_form","MADRS.json"),
+    3: os.path.join(PROJECT_ROOT,"form","emotion_form","anxiety_disorder.json"),
+}
 
+
+SLEEP_TITLES_BY_SEQ = {
+    1: "ISI",     # Insomnia Severity Index
+    2: "PSQI",    # Pittsburgh Sleep Quality Index
+    3: "KESS",    # Korean Epworth Sleepiness Scale
+    4: "MEQ-K",   # Morningness–Eveningness Questionnaire (Korean)
+}
+SLEEP_FORMS_BY_SEQ = {
+    1: os.path.join(PROJECT_ROOT, "form", "sleep_form", "ISI.json"),
+    2: os.path.join(PROJECT_ROOT, "form", "sleep_form", "PSQI.json"),
+    3: os.path.join(PROJECT_ROOT, "form", "sleep_form", "KESS.json"),
+    4: os.path.join(PROJECT_ROOT, "form", "sleep_form", "MEQ_K.json"),
+}
 # ---------------- 서버 체크 ----------------
 def local_db_check():
     """로컬 DB 연결 상태 확인"""
@@ -296,7 +328,9 @@ def open_survey_form(item_data=None):
     modal.geometry("1200x900")
     modal.grab_set()
 
-    patient_uuid = selected_patient["patient_id"]
+
+    patient_uuid = item_data['patient_id']
+    print(patient_uuid)
     initials = selected_patient.get("patient_initials", "?")
     raw_type = item_data.get('data_type', 'N/A') if item_data else 'N/A'
 
@@ -308,6 +342,15 @@ def open_survey_form(item_data=None):
     }
     item_type = type_display_map.get(raw_type.upper(), raw_type)
 
+    # 정서 설문이면 뒤에 세부명(PHQ-9 등) 붙이기
+    pretty_suffix = ""
+    try:
+        if str(raw_type).upper() == "E-SURVEY":
+            seq_for_title = item_data.get("seq")
+            if seq_for_title in EMOTION_TITLES_BY_SEQ:
+                pretty_suffix = f" - {EMOTION_TITLES_BY_SEQ[seq_for_title]}"
+    except Exception:
+        pass
     ctk.CTkLabel(
         modal,
         text=f"📝 설문지 - {initials} ({item_type})",
@@ -328,14 +371,45 @@ def open_survey_form(item_data=None):
 
     # ✅ 폼 종류 분기
     if is_table_form:
+        qmap = None
+        seq = item_data.get("seq")
+        dtype = str(item_data.get("data_type","")).upper()
+    
+        if dtype == "E-SURVEY":
+            # 정서 설문 매핑
+            if seq == 1:
+                qmap = PHQ9_QUESTION_MAPPING
+            elif seq == 2:
+                qmap = MADRS_QUESTION_MAPPING
+            elif seq == 3:
+                qmap = ANXIETY_DISORDER_QUESTION_MAPPING
+    
+        elif dtype == "S-SURVEY":
+            # ✅ 수면 설문 매핑
+            if seq == 1:
+                qmap = ISI_QUESTION_MAPPING
+            elif seq == 2:
+                qmap = KESS_QUESTION_MAPPING
+            elif seq == 3:
+                qmap = PSQI_QUESTION_MAPPING
+            elif seq == 4:
+                qmap = MEQK_QUESTION_MAPPING
+    
         from form.generic_survey import GenericSurveyForm
-        form_frame = GenericSurveyForm(modal, json_file=json_file_path)
+        form_frame = GenericSurveyForm(
+            modal,
+            json_file=json_file_path,
+            item_data=item_data,
+            patient_uuid=patient_uuid,
+            qmap=qmap,
+            on_close_callback=reload_after_close
+        )
     else:
         from form.survey import HealthSurveyForm
         form_frame = HealthSurveyForm(
             modal,
             json_file=json_file_path,
-            patient_id=patient_uuid,
+            patient_uuid=patient_uuid,
             item_data=item_data,
             on_close_callback=reload_after_close
         )
@@ -939,6 +1013,222 @@ def show_video_player_window(item_id, file_path, error=False):
         player.play()
 
     ctk.CTkButton(video_window, text="닫기", command=video_window.destroy).pack(pady=10)
+def _find_emotion_item_by_seq(items, seq: int):
+    """items 리스트에서 data_type='E-SURVEY' AND seq==X 인 첫 항목 반환"""
+    for it in items or []:
+        if str(it.get("data_type","")).upper() == "E-SURVEY" and int(it.get("seq") or 0) == int(seq):
+            return it
+    return None
+
+
+def open_emotion_survey(seq: int, existing_item: Optional[dict] = None):
+    """
+    정서 설문(PHQ-9/MADRS/불안척도) 입력/수정 공용 오프너
+    - 신규: tb_items 생성하지 않음(저장 시점에 트랜잭션으로 생성)
+    - 수정: 기존 item 정보 사용
+    """
+    if not selected_patient:
+        messagebox.showwarning("환자 선택 필요", "먼저 환자를 선택해주세요.")
+        return
+
+    patient_uuid = selected_patient["patient_id"]
+    
+    title = EMOTION_TITLES_BY_SEQ.get(seq, f"SEQ-{seq}")
+    json_file_path = EMOTION_FORMS_BY_SEQ.get(seq)
+    if not json_file_path:
+        messagebox.showerror("오류", f"정서 설문 폼(json) 경로를 찾을 수 없습니다. seq={seq}")
+        return
+
+    if existing_item is None:
+        item_data = {
+            "patient_id": patient_uuid,
+            "data_category": "MDD",
+            "data_type": "E-SURVEY",
+            "seq": seq,
+            "title": title,
+            "json_file": json_file_path
+        }
+    else:
+        item_data = existing_item.copy()
+        item_data.update({
+            "patient_id": patient_uuid,           # 혹시 없을 수 있어 보강
+            "data_category": existing_item.get("data_category", "MDD"),
+            "data_type": "E-SURVEY",
+            "seq": existing_item.get("seq", seq),
+            "title": title,
+            "json_file": json_file_path
+        })
+
+    open_survey_form(item_data)
+
+
+
+def render_emotion_section(parent, emotion_items: list):
+    """
+    정서 설문지 3종(PHQ-9/MADRS/불안척도)을 항상 3행으로 보여주고
+    각 행에 입력/수정 버튼 제공
+    """
+    section = ctk.CTkFrame(parent)
+    section.pack(fill="x", pady=(10,10), padx=10)
+
+    ctk.CTkLabel(section, text="📋 정서 설문지", font=ctk.CTkFont(size=15, weight="bold")).pack(anchor="w", pady=(5,3))
+
+    rows = ctk.CTkFrame(section, fg_color="transparent")
+    rows.pack(fill="x")
+
+    for seq in (1,2,3):
+        this_item = _find_emotion_item_by_seq(emotion_items, seq)
+        title = EMOTION_TITLES_BY_SEQ.get(seq, f"정서설문-{seq}")
+
+        row = ctk.CTkFrame(rows, fg_color="transparent")
+        row.pack(fill="x", pady=4)
+        row.grid_columnconfigure(0, weight=1)
+        row.grid_columnconfigure(1, weight=0)
+
+        status_text = "미입력"
+        collected_str = "미입력"
+        bold = "normal"
+
+        if this_item:
+            has_data = bool(this_item.get("questions") or this_item.get("questions_raw"))
+            status_text = "입력됨" if has_data else "생성됨(미입력)"
+            bold = "bold" if has_data else "normal"
+            collected_at = this_item.get("collected_at")
+            try:
+                if isinstance(collected_at, datetime):
+                    collected_str = collected_at.strftime("%Y-%m-%d %H:%M")
+                elif collected_at:
+                    collected_str = str(collected_at).split(".")[0].replace("T"," ")
+            except Exception:
+                collected_str = "(날짜 오류)"
+
+        ctk.CTkLabel(
+            row,
+            text=f"     {title} | 상태: {status_text} | 입력일시: {collected_str}",
+            anchor="w",
+            font=ctk.CTkFont(size=13, weight=bold)
+        ).grid(row=0, column=0, sticky="w", padx=(10, 0))
+
+        btn_text = "수정" if this_item and (this_item.get("questions") or this_item.get("questions_raw")) else "입력"
+        btn_color = "#357ABD" if btn_text=="수정" else "#4CAF50"
+
+        ctk.CTkButton(
+            row,
+            text=btn_text,
+            fg_color=btn_color,
+            hover_color=btn_color,
+            width=70,
+            command=(lambda s=seq, it=this_item: open_emotion_survey(s, it))
+        ).grid(row=0, column=1, padx=6, sticky="e")
+
+def _find_sleep_item_by_seq(items, seq: int):
+    """items 리스트에서 data_type='S-SURVEY' AND seq==X 인 첫 항목 반환"""
+    for it in items or []:
+        if str(it.get("data_type","")).upper() == "S-SURVEY" and int(it.get("seq") or 0) == int(seq):
+            return it
+    return None
+
+
+def open_sleep_survey(seq: int, existing_item: Optional[dict] = None):
+    """
+    수면 설문(ISI/KESS/PSQI/MEQ-K) 입력/수정 공용 오프너
+    - 신규: tb_items 생성은 제출 시점에 수행(폼에서 처리)
+    - 수정: 기존 item 정보 사용
+    """
+    if not selected_patient:
+        messagebox.showwarning("환자 선택 필요", "먼저 환자를 선택해주세요.")
+        return
+
+    patient_uuid = selected_patient["patient_id"]
+
+    title = SLEEP_TITLES_BY_SEQ.get(seq, f"SLEEP-{seq}")
+    json_file_path = SLEEP_FORMS_BY_SEQ.get(seq)
+    if not json_file_path:
+        messagebox.showerror("오류", f"수면 설문 폼(json) 경로를 찾을 수 없습니다. seq={seq}")
+        return
+
+    if existing_item is None:
+        item_data = {
+            "patient_id": patient_uuid,
+            "data_category": "MDD",
+            "data_type": "S-SURVEY",
+            "seq": seq,
+            "title": title,
+            "json_file": json_file_path
+        }
+    else:
+        item_data = existing_item.copy()
+        item_data.update({
+            "patient_id": patient_uuid,
+            "data_category": existing_item.get("data_category", "MDD"),
+            "data_type": "S-SURVEY",
+            "seq": existing_item.get("seq", seq),
+            "title": title,
+            "json_file": json_file_path
+        })
+
+    open_survey_form(item_data)
+
+
+def render_sleep_section(parent, sleep_items: list):
+    """
+    수면 설문지 4종(ISI/KESS/PSQI/MEQ-K)을 항상 4행으로 보여주고
+    각 행에 입력/수정 버튼 제공
+    """
+    section = ctk.CTkFrame(parent)
+    section.pack(fill="x", pady=(10,10), padx=10)
+
+    ctk.CTkLabel(section, text="😴 수면 설문지", font=ctk.CTkFont(size=15, weight="bold")).pack(anchor="w", pady=(5,3))
+
+    rows = ctk.CTkFrame(section, fg_color="transparent")
+    rows.pack(fill="x")
+
+    for seq in (1,2,3,4):
+        this_item = _find_sleep_item_by_seq(sleep_items, seq)
+        title = SLEEP_TITLES_BY_SEQ.get(seq, f"수면설문-{seq}")
+
+        row = ctk.CTkFrame(rows, fg_color="transparent")
+        row.pack(fill="x", pady=4)
+        row.grid_columnconfigure(0, weight=1)
+        row.grid_columnconfigure(1, weight=0)
+
+        status_text = "미입력"
+        collected_str = "미입력"
+        bold = "normal"
+
+        if this_item:
+            has_data = bool(this_item.get("questions") or this_item.get("questions_raw"))
+            status_text = "입력됨" if has_data else "생성됨(미입력)"
+            bold = "bold" if has_data else "normal"
+            collected_at = this_item.get("collected_at")
+            try:
+                if isinstance(collected_at, datetime):
+                    collected_str = collected_at.strftime("%Y-%m-%d %H:%M")
+                elif collected_at:
+                    collected_str = str(collected_at).split(".")[0].replace("T"," ")
+            except Exception:
+                collected_str = "(날짜 오류)"
+
+        ctk.CTkLabel(
+            row,
+            text=f"     {title} | 상태: {status_text} | 입력일시: {collected_str}",
+            anchor="w",
+            font=ctk.CTkFont(size=13, weight=bold)
+        ).grid(row=0, column=0, sticky="w", padx=(10, 0))
+
+        btn_text = "수정" if this_item and (this_item.get("questions") or this_item.get("questions_raw")) else "입력"
+        btn_color = "#357ABD" if btn_text=="수정" else "#4CAF50"
+
+        ctk.CTkButton(
+            row,
+            text=btn_text,
+            fg_color=btn_color,
+            hover_color=btn_color,
+            width=70,
+            command=(lambda s=seq, it=this_item: open_sleep_survey(s, it))
+        ).grid(row=0, column=1, padx=6, sticky="e")
+
+
 
 def process_items(items):
     """항목을 분류 후 섹션별 표시 (데이터 있으면 수정, 없으면 추가)"""
@@ -1021,17 +1311,19 @@ def process_items(items):
 
     # 섹션별 출력
     render_section("기초 평가", basic_survey_items, [os.path.join(PROJECT_ROOT,"form","basic_form","basic.json")])
-    render_section("정서 설문지", emotion_survey_items, [
-        os.path.join(PROJECT_ROOT,"form","emotion_form","phq9.json"),
-        os.path.join(PROJECT_ROOT,"form","emotion_form","MADRS.json"),
-        os.path.join(PROJECT_ROOT, "form", "emotion_form", "anxiety_disorder.json")
-    ])
-    render_section("수면 설문지", sleep_survey_items, [
-        os.path.join(PROJECT_ROOT, "form", "sleep_form", "ISI.json"),
-        os.path.join(PROJECT_ROOT, "form", "sleep_form", "KESS.json"),
-        os.path.join(PROJECT_ROOT, "form", "sleep_form", "PSQI.json"),
-        os.path.join(PROJECT_ROOT, "form", "sleep_form","MEQ_K.json")
-    ])
+    render_emotion_section(score_frame, emotion_survey_items)
+    # render_section("정서 설문지", emotion_survey_items, [
+    #     os.path.join(PROJECT_ROOT,"form","emotion_form","phq9.json"),
+    #     os.path.join(PROJECT_ROOT,"form","emotion_form","MADRS.json"),
+    #     os.path.join(PROJECT_ROOT, "form", "emotion_form", "anxiety_disorder.json")
+    # ])
+    # render_section("수면 설문지", sleep_survey_items, [
+    #     os.path.join(PROJECT_ROOT, "form", "sleep_form", "ISI.json"),
+    #     os.path.join(PROJECT_ROOT, "form", "sleep_form", "KESS.json"),
+    #     os.path.join(PROJECT_ROOT, "form", "sleep_form", "PSQI.json"),
+    #     os.path.join(PROJECT_ROOT, "form", "sleep_form","MEQ_K.json")
+    # ])
+    render_sleep_section(score_frame, sleep_survey_items)
     show_file_items(upload_list_frame, file_items)
 
 # ---------------- 환자 목록 테이블 로드 ----------------
