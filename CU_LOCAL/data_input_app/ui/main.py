@@ -35,8 +35,8 @@ from config import INSTITUTION, VIDEO_SAVE_BASE
 from utils.db_utils import get_connection, release_connection
 from sqlalchemy import text
 
-JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'mobility.json')
-JSON_FILE = os.path.abspath(JSON_FILE) # ← 절대경로로 변환 (안전)
+JSON_FILE = os.path.join(CURRENT_DIR, '..', 'form', 'basic_form', 'basic.json')
+JSON_FILE = os.path.abspath(JSON_FILE)  # ← 절대경로로 변환 (안전)
 
 items_cache = {} # 환자별 수집 항목 캐시
 
@@ -193,7 +193,7 @@ def show_survey_items(survey_items):
     list_container.pack(fill="x", padx=10, pady=5)
 
     for item in survey_items:
-        has_data = bool(item.get('questions'))
+        has_data = bool(item.get("questions")) or bool(item.get("questions_raw"))
         row_frame = ctk.CTkFrame(list_container, fg_color="transparent")
         row_frame.pack(fill="x", pady=5)
         row_frame.grid_columnconfigure(0, weight=1)
@@ -271,7 +271,7 @@ def show_survey_items(survey_items):
                 if success:
                     CTkMessagebox(title="삭제 완료", message="설문 항목이 삭제되었습니다.", icon="check")
                     # 목록 새로고침
-                    reload_after_close();
+                    reload_after_close()
                 else:
                     CTkMessagebox(title="오류", message=f"삭제 실패: {msg}", icon="cancel")
 
@@ -298,32 +298,39 @@ def open_survey_form(item_data=None):
 
     patient_uuid = selected_patient["patient_id"]
     initials = selected_patient.get("patient_initials", "?")
-    item_type = item_data.get('data_type', 'N/A') if item_data else 'N/A'
+    raw_type = item_data.get('data_type', 'N/A') if item_data else 'N/A'
+
+    # ✅ 사람이 보기 좋은 제목 변환
+    type_display_map = {
+        "B-SURVEY": "기초 평가",
+        "E-SURVEY": "정서 설문지",
+        "S-SURVEY": "수면 설문지"
+    }
+    item_type = type_display_map.get(raw_type.upper(), raw_type)
 
     ctk.CTkLabel(
-        modal, text=f"📝 설문지 - {initials} ({item_type})", font=("", 16)
+        modal,
+        text=f"📝 설문지 - {initials} ({item_type})",
+        font=("", 16)
     ).pack(pady=10)
 
-    # ✅ JSON 파일 경로 추출
+    # ✅ JSON 파일 경로 결정
     json_file_path = item_data.get("json_file", JSON_FILE)
 
     # ✅ JSON 구조 감지
     with open(json_file_path, "r", encoding="utf-8") as f:
         json_data = json.load(f)
 
-# ✅ 정확한 구조 판별 로직
-    if any("sections" in v or "body" in v for v in json_data.values()):
-        is_table_form = True
-    else:
-        is_table_form = False
+    is_table_form = any(
+        isinstance(v, dict) and ("sections" in v or "body" in v)
+        for v in json_data.values()
+    )
 
     # ✅ 폼 종류 분기
     if is_table_form:
-        print("is_tabel_form")
         from form.generic_survey import GenericSurveyForm
         form_frame = GenericSurveyForm(modal, json_file=json_file_path)
     else:
-        print("not is_tabel_form")
         from form.survey import HealthSurveyForm
         form_frame = HealthSurveyForm(
             modal,
@@ -934,19 +941,10 @@ def show_video_player_window(item_id, file_path, error=False):
     ctk.CTkButton(video_window, text="닫기", command=video_window.destroy).pack(pady=10)
 
 def process_items(items):
-    """로드된 전체 항목을 설문(3종)과 파일로 분류하여 각 영역에 표시합니다."""
-    # 그룹별 리스트 초기화
-    basic_survey_items = []   # 기초평가
-    emotion_survey_items = [] # 정서설문지
-    sleep_survey_items = []   # 수면설문지
-    file_items = []           # 영상/파일
-
+    """항목을 분류 후 섹션별 표시 (데이터 있으면 수정, 없으면 추가)"""
+    basic_survey_items, emotion_survey_items, sleep_survey_items, file_items = [], [], [], []
     for item in items:
-        print(item)
-        data_category = str(item.get('data_category', '')).strip()
         data_type = str(item.get('data_type', '')).upper()
-        print('item',item)
-        # 설문 분류 기준: data_category 명칭으로 구분
         if data_type == "B-SURVEY":
             basic_survey_items.append(item)
         elif data_type == "E-SURVEY":
@@ -956,121 +954,84 @@ def process_items(items):
         elif "VIDEO" in data_type or "FILE" in data_type:
             file_items.append(item)
         else:
-            # 혹시 분류 안되는 나머지 → 일단 파일 항목으로
             file_items.append(item)
 
-    # ---------------- 설문 영역 초기화 ----------------
+    # 기존 영역 초기화
     for widget in score_frame.winfo_children():
         widget.destroy()
 
-    # ---------------- 공통 렌더 함수 ----------------
+    # 섹션 렌더 함수
     def render_section(title, survey_list, json_paths):
-        """각 설문 섹션 출력 (입력된 경우 → 수정 / 없는 경우 → 추가 버튼 표시)"""
-        section_frame = ctk.CTkFrame(score_frame)
-        section_frame.pack(fill="x", pady=(10, 10), padx=10)
-    
-        # 제목
-        ctk.CTkLabel(
-            section_frame,
-            text=f"📋 {title}",
-            font=ctk.CTkFont(size=15, weight="bold"),
-            text_color="#1B1C1D"
-        ).pack(anchor="w", pady=(5, 3))
-    
-        # ① 설문 데이터가 있는 경우 (입력됨 → 수정 가능)
+        section = ctk.CTkFrame(score_frame)
+        section.pack(fill="x", pady=(10,10), padx=10)
+
+        ctk.CTkLabel(section, text=f"📋 {title}", font=ctk.CTkFont(size=15, weight="bold")).pack(anchor="w", pady=(5,3))
+
         if survey_list and len(survey_list) > 0:
-            list_frame = ctk.CTkFrame(section_frame, fg_color="transparent")
-            list_frame.pack(fill="x", padx=5, pady=(5, 10))
-    
+            # 데이터 있는 경우 → 수정 가능
             for item in survey_list:
                 has_data = bool(item.get("questions"))
                 collected_at = item.get("collected_at")
-                collected_str = ""
-    
-                # 입력 시각 포맷팅
-                if collected_at:
-                    try:
-                        if isinstance(collected_at, datetime):
-                            collected_str = collected_at.strftime("%Y-%m-%d %H:%M")
-                        else:
-                            collected_str = str(collected_at).split(".")[0].replace("T", " ")
-                    except Exception:
-                        collected_str = "(날짜 오류)"
-    
-                # 프레임 구성
-                row_frame = ctk.CTkFrame(list_frame, fg_color="transparent")
-                row_frame.pack(fill="x", pady=3)
-                row_frame.grid_columnconfigure(0, weight=1)
-    
-                # 라벨 (항목명 + 입력일시)
-                label_text = f"{item['data_type']} | 입력일시: {collected_str if collected_str else '미입력'}"
+                try:
+                    collected_str = collected_at.strftime("%Y-%m-%d %H:%M") if isinstance(collected_at, datetime) else str(collected_at).split(".")[0].replace("T", " ")
+                except Exception:
+                    collected_str = "(날짜 오류)"
+
+                row = ctk.CTkFrame(section, fg_color="transparent")
+                row.pack(fill="x", pady=3)
+                row.grid_columnconfigure(0, weight=1)
+
                 ctk.CTkLabel(
-                    row_frame,
-                    text=label_text,
-                    anchor="w",
-                    font=ctk.CTkFont(size=13, weight="bold" if has_data else "normal")
+                    row,
+                    text=f"{item['data_type']} | 입력일시: {collected_str if collected_at else '미입력'}",
+                    font=ctk.CTkFont(size=13, weight="bold" if has_data else "normal"),
+                    anchor="w"
                 ).grid(row=0, column=0, sticky="w")
-    
-                # 수정 버튼
+                
                 ctk.CTkButton(
-                    row_frame,
+                    row,
                     text="수정" if has_data else "입력",
-                    command=lambda d=item: open_survey_form(d),
-                    width=70,
                     fg_color="#357ABD" if has_data else "#4CAF50",
-                    hover_color="#285EAD" if has_data else "#3E9B41"
+                    hover_color="#285EAD" if has_data else "#3E9B41",
+                    width=70,
+                    command=lambda d=item: open_survey_form(d)
                 ).grid(row=0, column=1, padx=5, sticky="e")
-    
-        # ② 설문 데이터가 없는 경우 (추가 버튼만 표시)
         else:
-            ctk.CTkLabel(
-                section_frame,
-                text=f"{title} 데이터가 없습니다.",
-                font=("", 13, "italic"),
-                text_color="gray"
-            ).pack(pady=(10, 5))
-    
-            # ➕ 추가 버튼
-            def open_default_form():
-                if not json_paths:
-                    messagebox.showerror("오류", f"{title}에 해당하는 폼이 없습니다.")
-                    return
+            # 데이터 없는 경우 → 추가 버튼
+            ctk.CTkLabel(section, text=f"{title} 데이터가 없습니다.", font=("",13,"italic"), text_color="gray").pack(pady=(10,5))
+            def open_new_form():
+                if not json_paths: return messagebox.showerror("오류", f"{title} 폼이 없습니다.")
                 json_file = json_paths[0]
-                new_item_data = {
-                    "data_category": "MDD",
-                    "data_type": title,
-                    "seq": 1,
-                    "json_file": json_file,
+                new_item = {
+                    "data_category":"MDD",
+                    "data_type":title,
+                    "seq":1,
+                    "json_file":json_file
                 }
-                open_survey_form(new_item_data)
-    
+                open_survey_form(new_item)
+
             ctk.CTkButton(
-                section_frame,
+                section,
                 text=f"➕ {title} 입력하기",
-                font=("", 13, "bold"),
+                font=("",13,"bold"),
                 fg_color="#007BFF",
                 hover_color="#0056b3",
-                command=open_default_form
-            ).pack(pady=(5, 10))
-    
+                command=open_new_form
+            ).pack(pady=(5,10))
 
-    # ---------------- 섹션별 출력 ----------------
-    render_section("기초 평가", basic_survey_items, [
-        os.path.join(PROJECT_ROOT, "form", "basic_form", "basic.json")
-    ])
+    # 섹션별 출력
+    render_section("기초 평가", basic_survey_items, [os.path.join(PROJECT_ROOT,"form","basic_form","basic.json")])
     render_section("정서 설문지", emotion_survey_items, [
-        os.path.join(PROJECT_ROOT, "form", "emotion_form", "phq9.json"),
-        os.path.join(PROJECT_ROOT, "form", "emotion_form", "MADRS.json"),
-        os.path.join(PROJECT_ROOT, "form", "emotion_form", "anxiety_disorder.json"),
+        os.path.join(PROJECT_ROOT,"form","emotion_form","phq9.json"),
+        os.path.join(PROJECT_ROOT,"form","emotion_form","MADRS.json"),
+        os.path.join(PROJECT_ROOT, "form", "emotion_form", "anxiety_disorder.json")
     ])
     render_section("수면 설문지", sleep_survey_items, [
         os.path.join(PROJECT_ROOT, "form", "sleep_form", "ISI.json"),
         os.path.join(PROJECT_ROOT, "form", "sleep_form", "KESS.json"),
         os.path.join(PROJECT_ROOT, "form", "sleep_form", "PSQI.json"),
-        os.path.join(PROJECT_ROOT, "form", "sleep_form", "MEQ_K.json"),
+        os.path.join(PROJECT_ROOT, "form", "sleep_form","MEQ_K.json")
     ])
-
-    # ---------------- 파일 항목 영역 ----------------
     show_file_items(upload_list_frame, file_items)
 
 # ---------------- 환자 목록 테이블 로드 ----------------

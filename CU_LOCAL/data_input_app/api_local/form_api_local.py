@@ -6,14 +6,6 @@ import traceback
 # ============================================================
 # 🧩 MDS 질문 매핑 (로컬 DB용)
 # ============================================================
-MDS_QUESTION_MAPPING = {
-    # DB 삽입 순서: 1~8번 (기초 정보)
-    "a": 1, "b": 2, "c": 3, "c1": 4, "d": 5, "d1": 6, "d2": 7, "e": 8,
-    # DB 삽입 순서: 9~26번 (운동 항목별 평가)
-    "1": 9, "2": 10, "3": 11, "4": 12, "5": 13, "6": 14, "7": 15, "8": 16,
-    "9": 17, "10": 18, "11": 19, "12": 20, "13": 21, "14": 22, "15": 23,
-    "16": 24, "17": 25, "18": 26,
-}
 
 BASIC_QUESTION_MAPPING = {
     "결혼 여부": 104,
@@ -21,27 +13,28 @@ BASIC_QUESTION_MAPPING = {
     "직업": 106,
     "교대근무 여부": 107,
     "기타 항목 입력": 108,
-    "신장/몸무게": 109,
-    "카페인 음료 섭취": 110,
-    "섭취 여부": 111,
-    "월 섭취 횟수": 112,
-    "기타 음료 입력": 113,
-    "음주에 대한 질문": 114,
-    "음주 종류": 115,
-    "기타 주류 입력": 117,
-    "흡연 여부": 118,
-    "하루 흡연량": 119,
-    "흡연 기간": 120,
-    "운동 여부": 121,
-    "운동 종류": 122,
-    "운동 시간": 124,
-    "현병력": 126,
-    "우울증": 127,
-    "불면증": 128,
-    "기타": 129,
-    "발병 시점": 131,
-    "발병 년수": 132,
-    "발병 월수": 133,
+    "신장": 109,
+    "몸무게": 110,
+    "카페인 음료 섭취": 111,
+    "섭취 여부": 112,
+    "월 섭취 횟수": 113,
+    "기타 음료 입력": 114,
+    "음주에 대한 질문": 115,
+    "음주 종류": 117,
+    "기타 주류 입력": 118,
+    "흡연 여부": 119,
+    "하루 흡연량": 120,
+    "흡연 기간": 121,
+    "운동 여부": 122,
+    "운동 종류": 124,
+    "운동 시간": 126,
+    "현병력": 127,
+    "우울증": 128,
+    "불면증": 129,
+    "기타": 131,
+    "발병 시점": 132,
+    "발병 년수": 133,
+    "발병 월수": 134,
 }
 
 
@@ -311,3 +304,48 @@ def transform_to_api_format(raw_data: dict) -> list:
             answers.append(answer)
 
     return answers
+
+# api_local/form_api_local.py
+def update_existing_survey_answers_by_id(answers: List[dict]) -> Tuple[bool, Union[str, None]]:
+    """
+    ✅ answer_id(PK) 기준으로 설문 응답 수정
+    Parameters
+    ----------
+    answers : List[dict]
+        예) [{"answer_id": 10, "answer_value": "3"},
+             {"answer_id": 11, "answer_value": "true"}]
+    Returns
+    -------
+    (ok: bool, err: Optional[str])
+    """
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            for ans in answers:
+                aid = ans.get("answer_id")
+                val = ans.get("answer_value")
+
+                if aid is None:
+                    # 잘못된 payload는 무시하거나 예외 처리
+                    continue
+
+                cur.execute(
+                    """
+                    UPDATE dev_kkh.tb_Questionnaire_Answers
+                    SET answer_value = %s
+                    WHERE answer_id = %s;
+                    """,
+                    (val, aid)
+                )
+        conn.commit()
+        return True, None
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return False, str(e)
+
+    finally:
+        if conn:
+            release_connection(conn)
