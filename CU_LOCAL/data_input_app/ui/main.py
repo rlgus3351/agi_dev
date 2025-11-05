@@ -329,8 +329,10 @@ def open_survey_form(item_data=None):
     modal.grab_set()
 
 
-    patient_uuid = item_data['patient_id']
-    print(patient_uuid)
+    patient_uuid = (
+        (item_data or {}).get("patient_id")
+        or (selected_patient.get("patient_id") if selected_patient else None)
+    )
     initials = selected_patient.get("patient_initials", "?")
     raw_type = item_data.get('data_type', 'N/A') if item_data else 'N/A'
 
@@ -409,7 +411,7 @@ def open_survey_form(item_data=None):
         form_frame = HealthSurveyForm(
             modal,
             json_file=json_file_path,
-            patient_uuid=patient_uuid,
+            patient_id=patient_uuid,
             item_data=item_data,
             on_close_callback=reload_after_close
         )
