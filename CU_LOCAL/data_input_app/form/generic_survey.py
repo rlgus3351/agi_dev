@@ -3,6 +3,8 @@ from CTkMessagebox import CTkMessagebox
 import json
 from typing import Dict, Any, List, Tuple, Optional, Callable
 import tkinter as tk  # ✅ multiline 텍스트용
+from utils.psql import compute_psqi
+from utils.meqk import compute_meqk
 
 # -------------------------------------------------
 # 텍스트 정규화: 줄바꿈/여러 공백 제거 + trim
@@ -11,6 +13,115 @@ def _norm(text: str) -> str:
     if not isinstance(text, str):
         text = str(text or "")
     return " ".join(text.replace("\n", " ").replace("\r", " ").split()).strip()
+
+
+
+class TimeRulerSlider(ctk.CTkFrame):
+    """시간 슬라이더 (자정 넘김 지원).
+       min_hour=20, max_hour=3 처럼 들어오면 내부 범위를 [20, 27]로 잡고 표시/저장은 24h로 모듈러."""
+    def __init__(self, parent, min_hour=5.0, max_hour=12.0,
+                 step_minutes=30, width=700, initial=None, show_am_label=True):
+        super().__init__(parent)
+        self.orig_min = float(min_hour)
+        self.orig_max = float(max_hour)
+        self.min_h = float(min_hour)
+        self.max_h = float(max_hour)
+        # ✅ 자정 넘김이면 max에 24 더해 내부 구간 확장
+        if self.max_h < self.min_h:
+            self.max_h += 24.0
+
+        # step & steps
+        self.step_minutes = max(1, int(step_minutes))
+        self.step = self.step_minutes / 60.0
+        span = max(1e-9, (self.max_h - self.min_h))
+        n_steps = max(1, int(round(span / self.step)))  # ZeroDivisionError 방지
+
+        self.width = width
+        self.canvas_h = 40
+
+        # 초기값
+        if initial is None:
+            initial = self.min_h
+        else:
+            initial = float(initial)
+        # ✅ initial이 0~24 표기라면, min_h보다 작고 자정넘김이면 +24해서 구간에 맞춤
+        if initial < self.min_h:
+            initial += 24.0
+        initial = max(self.min_h, min(self.max_h, initial))
+
+        # 값 라벨(슬라이더 위쪽)
+        self.value_label = ctk.CTkLabel(self, text=self._fmt(initial),
+                                        font=ctk.CTkFont(size=13, weight="bold"))
+        self.value_label.pack(padx=4, anchor="e")
+
+        # 슬라이더
+        self._var = tk.DoubleVar(value=initial)
+        self.slider = ctk.CTkSlider(self, from_=self.min_h, to=self.max_h,
+                                    width=self.width, number_of_steps=n_steps,
+                                    variable=self._var, command=self._on_slide)
+        self.slider.pack(pady=(2, 0), fill="x")
+
+        # 눈금자
+        self.canvas = tk.Canvas(self, width=self.width, height=self.canvas_h,
+                                highlightthickness=0, bg=self._bg())
+        self.canvas.pack(pady=(2, 2), fill="x")
+        self.show_am_label = show_am_label
+        self._draw_ticks()
+
+        # 마우스 놓을 때 스냅
+        self.slider.bind("<ButtonRelease-1>", self._snap)
+
+    # ----- helpers -----
+    def _bg(self):
+        try:
+            return self._apply_appearance_mode(ctk.ThemeManager.theme["CTkFrame"]["fg_color"])
+        except Exception:
+            return self.cget("fg_color") or "#FFFFFF"
+
+    def _fmt(self, h):
+        """내부값 h(예: 26.5)를 24h로 모듈러하여 HH:MM 문자열로."""
+        h24 = h % 24.0
+        hh = int(h24)
+        mm = int(round((h24 - hh) * 60)) % 60
+        return f"{hh:02d}:{mm:02d}"
+
+    def _x(self, h):
+        r = (h - self.min_h) / (self.max_h - self.min_h)
+        return int(r * self.width)
+
+    def _draw_ticks(self):
+        self.canvas.delete("all")
+        y = self.canvas_h - 1
+        self.canvas.create_line(0, y, self.width, y)
+        # 30분 간격 눈금
+        h = self.min_h
+        while h <= self.max_h + 1e-9:
+            x = self._x(h)
+            major = abs((h % 1.0)) < 1e-9  # 정시
+            tick_h = 18 if major else 10
+            self.canvas.create_line(x, y, x, y - tick_h)
+            if major:
+                label = f"{int(h % 24)}"
+                # 범위 시작에만 "(오전)" 같은 꼬리표 원하면 여기에 조건 추가 가능
+                self.canvas.create_text(x, y - tick_h - 10, text=label)
+            h += 0.5  # 30분
+
+    def _on_slide(self, _=None):
+        self.value_label.configure(text=self._fmt(self._var.get()))
+
+    def _snap(self, _=None):
+        v = self._var.get()
+        snapped = round((v - self.min_h) / self.step) * self.step + self.min_h
+        snapped = max(self.min_h, min(self.max_h, snapped))
+        if abs(snapped - v) > 1e-6:
+            self._var.set(snapped)
+            self.slider.set(snapped)
+        self.value_label.configure(text=self._fmt(snapped))
+
+    def get_value(self):
+        """(float_hour_mod24, 'HH:MM') 반환. float은 0~24 기준으로 돌려줌."""
+        v = self._var.get() % 24.0
+        return v, self._fmt(self._var.get())
 
 
 class GenericSurveyForm(ctk.CTkFrame):
@@ -72,9 +183,12 @@ class GenericSurveyForm(ctk.CTkFrame):
         self._prefill: Dict[Tuple[int, Optional[str]], str] = self._build_prefill()
 
         # 현재 폼에서 관리하는 변수들
-        self.vars: Dict[Any, ctk.StringVar] = {}
-        # ✅ 점수 계산 대상(qid 키)만 따로 추적: radio, input-number
+        self.vars: Dict[Any, Any] = {}  # StringVar, Text, TimeRulerSlider 등 혼합 저장
+        # ✅ 점수 계산 대상: int(qid) 또는 ('time', qid)
         self._score_keys: set = set()
+
+        # ✅ 시간 구간 점수 규칙 수집
+        self._time_scoring = self._collect_time_scoring()
 
         # 스크롤 영역
         scroll_frame = ctk.CTkScrollableFrame(self)
@@ -100,7 +214,108 @@ class GenericSurveyForm(ctk.CTkFrame):
             self._modal.protocol("WM_DELETE_WINDOW", self._on_close_clicked)
         except Exception:
             pass
-
+    def _collect_psqi_answers_for_util(self) -> dict:
+        """
+        현재 폼의 값들을 PSQI util 입력 포맷으로 수집.
+        qmap(DB question_id 매핑)을 이용해 self.vars에서 안전하게 가져온다.
+        결과 키는 PSQI util 사양: "1","2","3","4","5-a"..."5-j","6","7","8","9".
+        """
+        if not self.qmap:
+            # 안전망: qmap이 없으면 기존 로직(기본 ID)으로 시도
+            # (원본 함수 내용을 fall-back으로 남기고 싶으면 여기에 붙여도 OK)
+            return {
+                "1": "0:00", "2": 0, "3": "0:00", "4": 0.0,
+                "5-a": 0, "5-b": 0, "5-c": 0, "5-d": 0, "5-e": 0,
+                "5-f": 0, "5-g": 0, "5-h": 0, "5-i": 0, "5-j": 0,
+                "6": 0, "7": 0, "8": 0, "9": 0,
+            }
+    
+        def _qid(text: str) -> Optional[int]:
+            return self.qmap.get(_norm(text))
+    
+        def _get_time_by_text(text: str) -> str:
+            qid = _qid(text)
+            if qid is None:
+                return "0:00"
+            # slider-time 위젯 우선
+            w = self.vars.get(f"{qid}__timeruler")
+            if w is not None:
+                _, hhmm = w.get_value()
+                return hhmm
+            # 숫자/문자 → HH:MM 로 가정 가능한 경우
+            v = self.vars.get(qid)
+            if v is None:
+                return "0:00"
+            s = str(v.get()).strip()
+            if ":" in s:
+                return s
+            try:
+                # 정수 시각(0~23) 들어온 경우 HH:00 로 변환
+                h = int(float(s))
+                return f"{h:02d}:00"
+            except Exception:
+                return "0:00"
+    
+        def _get_int_by_text(text: str) -> int:
+            qid = _qid(text)
+            if qid is None:
+                return 0
+            v = self.vars.get(qid)
+            if v is None:
+                return 0
+            try:
+                return int(str(v.get()).strip())
+            except Exception:
+                return 0
+    
+        def _get_float_by_text(text: str) -> float:
+            qid = _qid(text)
+            if qid is None:
+                return 0.0
+            v = self.vars.get(qid)
+            if v is None:
+                return 0.0
+            try:
+                return float(str(v.get()).strip())
+            except Exception:
+                return 0.0
+    
+        # Q1~Q4
+        a1 = _get_time_by_text("보통 몇시에 잠자리에 듭니까?")
+        a2 = _get_int_by_text("보통 잠 들 때까지 평균 얼마나 걸립니까?")
+        a3 = _get_time_by_text("보통 몇 시에 일어납니까?")
+        a4 = _get_float_by_text("당신은 실제로 하루에 몇 시간 잡니까?")
+    
+        # Q5a~Q5j
+        five_map = {
+            "5-a": "밤에 30분 이내에 잠들지 못해서",
+            "5-b": "중간에 깨거나 너무 일찍 깨서",
+            "5-c": "화장실을 다녀오려고 일어나서",
+            "5-d": "수면 중 숨을 쉬기가 불편해서",
+            "5-e": "기침을 하거나 크게 코를 골아서",
+            "5-f": "수면 중 너무 춥다고 느껴서",
+            "5-g": "수면 중 너무 덥다고 느껴서",
+            "5-h": "나쁜 꿈을 꿔서",
+            # ❗ JSON 중복 수정 후: '통증이 있어서'는 5-j로 봅니다.
+            "5-j": "통증이 있어서",
+            "5-i": "위에 적혀진 이유 외에 잠을 못 잔 다른 이유",
+        }
+        five_vals = {k: _get_int_by_text(txt) for k, txt in five_map.items()}
+    
+        # Q6~Q9
+        a6 = _get_int_by_text("당신은 잠을 잘 자기 위해 수면제 또는 다른 약물(처방 또는 비처방약물)을 복용 한 적이 얼마나 자주 있었습니까?")
+        a7 = _get_int_by_text("당신은 운전 중이거나 식사 중, 또는 기타 사회활동을 하는 동안 깨어있기 힘들 떄가 얼마나 자주 있었습니까?")
+        a8 = _get_int_by_text("당신은 일을 해내는 데 충분한 활력을 유지하기가 어려웠습니까?")
+        a9 = _get_int_by_text("당신은 전반적인 자신의 수면의 질을 어떻게 평가합니까?")
+    
+        return {
+            "1": a1, "2": a2, "3": a3, "4": a4,
+            "5-a": five_vals["5-a"], "5-b": five_vals["5-b"], "5-c": five_vals["5-c"],
+            "5-d": five_vals["5-d"], "5-e": five_vals["5-e"], "5-f": five_vals["5-f"],
+            "5-g": five_vals["5-g"], "5-h": five_vals["5-h"], "5-i": five_vals["5-i"],
+            "5-j": five_vals["5-j"],
+            "6": a6, "7": a7, "8": a8, "9": a9,
+        }
     # ---------------- 기존 답변 인덱스 ----------------
     def _build_existing_index(self) -> Dict[Tuple[int, Optional[str]], Dict[str, Any]]:
         idx: Dict[Tuple[int, Optional[str]], Dict[str, Any]] = {}
@@ -120,6 +335,130 @@ class GenericSurveyForm(ctk.CTkFrame):
 
     def _build_prefill(self) -> Dict[Tuple[int, Optional[str]], str]:
         return {key: str(meta.get("answer_value", "")) for key, meta in self._existing_index.items()}
+
+    # ---------------- 시간 스코어 규칙 ----------------
+    def _collect_time_scoring(self) -> Dict[int, list]:
+        """JSON 루트(각 설문)에서 time_scoring을 모아 qid->규칙 리스트로 반환"""
+        rules: Dict[int, list] = {}
+        for survey in self.survey_data.values():
+            ts = (survey or {}).get("time_scoring", {})
+            if not isinstance(ts, dict):
+                continue
+            for k, v in ts.items():
+                try:
+                    qid = int(k)
+                    rules[qid] = list(v)  # [["HH:MM","HH:MM",점수], ...]
+                except Exception:
+                    pass
+        return rules
+
+    @staticmethod
+    def _hhmm_to_minutes(hhmm: str) -> int:
+        hh, mm = hhmm.split(":")
+        return int(hh) * 60 + int(mm)
+
+    def _score_slider_time(self, qid: int, hour_value: float) -> Optional[int]:
+        """slider_time 값(시간 float)을 time_scoring 규칙으로 점수 환산"""
+        rules = self._time_scoring.get(qid)
+        if not rules:
+            return 0  # 규칙 없으면 0점(필요시 None으로 바꿔 검증 실패 처리 가능)
+
+        h = int(hour_value)
+        m = int(round((hour_value - h) * 60))
+        minutes = h * 60 + m
+
+        for i, (start_str, end_str, score) in enumerate(rules):
+            try:
+                s = self._hhmm_to_minutes(start_str)
+                e = self._hhmm_to_minutes(end_str)
+            except Exception:
+                continue
+            # [s, e) 권장, 마지막 구간은 e 포함 허용
+            last = (i == len(rules) - 1)
+            if (s <= minutes < e) or (last and minutes == e):
+                try:
+                    return int(score)
+                except Exception:
+                    return None
+        return 0
+    def _build_custom_radio(self, table, row_idx, qid, item,
+                        opt_col_start, last_col) -> int:
+        """
+        테이블의 옵션 컬럼(2..last_col)을 그대로 사용해, 각 옵션을 '해당 컬럼 한 칸'에 배치.
+        각 칸 내부는 [텍스트 | ●라디오] 2열 소프레임으로 고정 정렬.
+        반환: 이 항목이 실제로 사용한 grid row 수(rows_used)
+        """
+        options = [str(x) for x in item.get("options", [])]
+        if not options:
+            return 1
+
+        # 값 배열
+        values = item.get("values") or list(range(len(options)))
+        values = [str(v) for v in values]
+
+        # 프리필 & 점수 대상 등록
+        prefill = str(self._prefill.get((qid, None), ""))
+        var = ctk.StringVar(value=prefill)
+        self.vars[qid] = var
+        self._score_keys.add(qid)
+
+        # 사용할 옵션 컬럼 개수(테이블의 2..last_col 구간)
+        opt_cols_total = max(1, last_col - opt_col_start + 1)
+
+        # 한 줄에 몇 개 놓을지: 기본적으로 "가능한 모든 옵션 컬럼"을 사용
+        # (원하면 JSON에 "columns_per_row"로 덮어쓰기 가능하지만, opt_cols를 넘기지 않게 clamp)
+        col_cnt = int(item.get("columns_per_row", opt_cols_total))
+        col_cnt = max(1, min(col_cnt, opt_cols_total))
+
+        # 래퍼는 '문항 오른쪽 전폭(옵션 컬럼 전부)'을 정확히 차지
+        opt_frame = ctk.CTkFrame(table, fg_color="transparent")
+        opt_frame.grid(
+            row=row_idx,
+            column=opt_col_start,
+            columnspan=(last_col - opt_col_start + 1),   # ✅ 기존 코드의 off-by-one 수정
+            padx=0, pady=0, sticky="nsew"
+        )
+
+        # 외곽 그리드: 옵션 칸 수(col_cnt) 만큼 “같은 폭”으로
+        # (테이블에서 옵션 컬럼 minsize=100이므로 여기도 맞춰줌)
+        for c in range(col_cnt):
+            opt_frame.grid_columnconfigure(c, weight=1, minsize=100, uniform=f"optcols-{qid}")
+
+        # 옵션을 col_cnt로 줄바꿈 배치
+        import math
+        n_rows = math.ceil(len(options) / col_cnt)
+
+        k = 0
+        for r in range(n_rows):
+            for c in range(col_cnt):
+                if k >= len(options):
+                    break
+
+                # 각 옵션은 '해당 옵션 컬럼 하나'를 통째로 점유
+                cell = ctk.CTkFrame(opt_frame, fg_color="transparent")
+                cell.grid(row=r, column=c, padx=5, pady=(2, 6), sticky="nsew")
+                # 셀 내부 2열: [텍스트 | 라디오] — 텍스트가 늘어나고, 라디오는 고정
+                cell.grid_columnconfigure(0, weight=1)
+                cell.grid_columnconfigure(1, weight=0, minsize=32)  # 라디오 영역 고정폭 → 세로줄 정렬 안정화
+
+                txt = options[k]
+                val = values[k]
+
+                # 텍스트(왼쪽) : 다른 행과 줄바꿈 폭 맞춤
+                ctk.CTkLabel(
+                    cell, text=txt, anchor="w", justify="left", wraplength=320
+                ).grid(row=0, column=0, padx=(0, 8), sticky="w")
+
+                # 라디오(오른쪽) : 같은 칸의 오른쪽에 딱 붙여 통일
+                ctk.CTkRadioButton(
+                    cell, text="", variable=var, value=val
+                ).grid(row=0, column=1, padx=(0, 0), sticky="e")
+
+                k += 1
+
+        # 이 문항이 실제로 점유한 테이블 그리드 행 수
+        rows_used = 1  # 래퍼(opt_frame) 자체는 테이블에서 1줄만 차지
+        return rows_used
 
     # ---------------- QID 결정(핵심) ----------------
     def _qid_from_item(self, item: Dict[str, Any]) -> int:
@@ -222,7 +561,6 @@ class GenericSurveyForm(ctk.CTkFrame):
                     height = int(item.get("followup_height", 3))
                     prefill_etc = str(self._prefill.get((qid, "기타"), ""))
 
-                    # 텍스트 라벨은 문항 칸에만 표시 (번호/문항은 첫 줄에 이미 있음)
                     ctk.CTkLabel(table, text="사유 입력", anchor="w")\
                         .grid(row=row_idx+1, column=1, padx=10, pady=(0, 6), sticky="w")
 
@@ -318,39 +656,94 @@ class GenericSurveyForm(ctk.CTkFrame):
                         .grid(row=row_idx, column=2, columnspan=(last_col-1),
                               padx=5, pady=5, sticky="ew")
 
-            # 다음 항목을 위한 row 포인터 이동
+            # ---------------- 시간 슬라이더 ----------------
+            elif qtype == "slider-time":
+                step_minutes = int(item.get("step", item.get("step_minutes", 30)))
+                # 프리필 파싱: "HH:MM" 또는 "7.5" 형태를 수용
+                prefill_val = str(self._prefill.get((qid, None), "")).strip()
+                init = float(min_val)
+                if prefill_val:
+                    try:
+                        if ":" in prefill_val:
+                            hh, mm = prefill_val.split(":")
+                            init = int(hh) + int(mm) / 60.0
+                        else:
+                            init = float(prefill_val)
+                    except Exception:
+                        init = float(min_val)
+
+                # 눈금자 + 슬라이더 위젯
+                slider = TimeRulerSlider(
+                    table,
+                    min_hour=float(min_val), max_hour=float(max_val),
+                    step_minutes=step_minutes, width=600, initial=float(init),
+                    show_am_label=True
+                )
+                # 그리드: 문항 오른쪽 전폭 차지
+                slider.grid(row=row_idx, column=2, columnspan=(last_col-1),
+                            padx=5, pady=5, sticky="ew")
+
+                # 저장/스코어링을 위해 위젯 자체를 등록
+                self.vars[f"{qid}__timeruler"] = slider
+                self._score_keys.add(("time", qid))
+
+                rows_used = 1
+            elif qtype in ("custom-radio", "radio-custom"):
+                rows_used = self._build_custom_radio(
+                    table=table, row_idx=row_idx, qid=qid, item=item,
+                    opt_col_start=opt_col_start, last_col=last_col
+                    )
+
+
+            # 다음 항목을 위한 row 포인터 이동 + 구분선
             row_idx += rows_used
-            sep_row = row_idx + rows_used  # 이 항목 아래 줄
-            separator = ctk.CTkFrame(table, height=4, fg_color="#CCCCCC")
-            separator.grid(row=sep_row, column=0,
-                           columnspan=len(columns),  # 전체 컬럼 가로지름
-                           sticky="ew", pady=(0, 5))
-            row_idx = sep_row + 1   
+
+            separator = ctk.CTkFrame(table, height=2, fg_color="#C8CCD2")
+            separator.grid(row=row_idx, column=0, columnspan=len(columns),
+                           sticky="ew", pady=(6, 6))
+            # 프레임이 높이 2px로 유지되도록 (그리드 수축 방지)
+            separator.grid_propagate(False)
+
+            row_idx += 1
 
     # ---------------- 제출/점수 ----------------
     def _calc_total_and_check(self) -> Optional[int]:
         """
         총점 계산:
-          - self._score_keys 에 포함된 키(qid)만 점수로 합산
-          - 라디오/숫자 입력은 값 미입력 또는 숫자 아님 → None(검증 실패)
-          - 텍스트 입력은 점수 제외이므로 미입력이어도 통과
+          - self._score_keys 에 포함된 키만 점수로 합산
+            * int(qid): 라디오/숫자 입력 → 정수 변환
+            * ('time', qid): slider_time → 시간 구간 규칙으로 환산
+          - 미입력/형식오류 시 None 리턴(검증 실패)
         """
         total = 0
 
-        # 1) 점수 대상(qid)만 체크
-        for qid in self._score_keys:
+        for key in self._score_keys:
+            # slider_time
+            if isinstance(key, tuple) and key[0] == "time":
+                qid = key[1]
+                widget = self.vars.get(f"{qid}__timeruler")
+                if widget is None:
+                    return None
+                hour_value, _hhmm = widget.get_value()
+                score = self._score_slider_time(qid, float(hour_value))
+                if score is None:
+                    return None
+                total += score
+                continue
+
+            # 라디오/숫자
+            qid = key
             var = self.vars.get(qid)
             if var is None:
                 return None
             v = var.get()
-            if v.strip() == "":
+            if str(v).strip() == "":
                 return None
             try:
                 total += int(v)
             except ValueError:
                 return None
 
-        # 2) 기타 텍스트들은 검증에서 제외
         return total
 
     def _on_submit(self):
@@ -358,7 +751,7 @@ class GenericSurveyForm(ctk.CTkFrame):
         if total is None:
             CTkMessagebox(
                 title="입력 누락",
-                message="점수 항목(라디오/숫자)을 올바르게 입력해주세요.",
+                message="점수 항목(라디오/숫자/시간)을 올바르게 입력해주세요.",
                 icon="warning",
                 option_1="확인",
             )
@@ -408,14 +801,14 @@ class GenericSurveyForm(ctk.CTkFrame):
           - updates: [{"answer_id":..., "answer_value":"..."}]
           - inserts: [{"question_id":..., "answer_component":..., "answer_value":"..."}]
         ※ 라디오는 answer_component=None, followup_input는 comp="기타"
-        ※ input-text는 answer_component=None 으로 저장 (점수 제외지만 값은 저장)
+        ※ input-text는 answer_component=None
+        ※ slider_time은 answer_value에 "HH:MM" 문자열로 저장
         """
         inserts: List[Dict[str, Any]] = []
         updates: List[Dict[str, Any]] = []
 
         def add(qid: int, comp: Optional[str], value: str):
             if not qid:
-                # 매핑 실패한 행은 저장 스킵
                 return
             key = (qid, comp)
             existed = self._existing_index.get(key)
@@ -425,7 +818,7 @@ class GenericSurveyForm(ctk.CTkFrame):
                 inserts.append({"question_id": qid, "answer_component": comp, "answer_value": value})
 
         for key, var in list(self.vars.items()):
-            # ✅ multiline Text 위젯 처리
+            # ✅ multiline Text 위젯
             if isinstance(key, str) and key.endswith("__textwidget"):
                 try:
                     qid_str = key.split("__textwidget")[0]
@@ -434,29 +827,42 @@ class GenericSurveyForm(ctk.CTkFrame):
                     continue
                 widget: tk.Text = var  # type: ignore
                 val = widget.get("1.0", "end-1c").strip()
-                # placeholder인지 체크는 생략(placeholder 넣었다면 포커스아웃 이벤트가 지웠을 것)
                 if val != "":
                     add(qid, None, val)
                 continue
 
-            # 기타 follow-up 텍스트
+            # ✅ 시간 슬라이더 위젯
+            if isinstance(key, str) and key.endswith("__timeruler"):
+                try:
+                    qid_str = key.split("__timeruler")[0]
+                    qid = int(qid_str)
+                except Exception:
+                    continue
+                widget: TimeRulerSlider = var  # type: ignore
+                _, hhmm = widget.get_value()
+                if hhmm:
+                    add(qid, None, hhmm)  # HH:MM 형식으로 저장
+                continue
+
+            # ✅ follow-up 텍스트
             if isinstance(key, str) and key.endswith("_etc"):
                 try:
                     qid = int(key.split("_")[0])
                     val = str(var.get()).strip()
                     if val != "":
-                        add(qid, "기타", val)   # followup free-text
+                        add(qid, "기타", val)
                 except Exception:
                     continue
             else:
                 # 일반 qid (radio / input-number / input-text 단일라인)
-                try:
-                    qid = int(key)
-                    val = str(var.get()).strip()
-                    if val != "":
-                        add(qid, None, val)
-                except Exception:
-                    continue
+                if isinstance(key, int):
+                    try:
+                        qid = key
+                        val = str(var.get()).strip()
+                        if val != "":
+                            add(qid, None, val)
+                    except Exception:
+                        continue
 
         return {"inserts": inserts, "updates": updates}
 
@@ -496,6 +902,37 @@ class GenericSurveyForm(ctk.CTkFrame):
 
         desc_with_score = f"{title} 총점 {total_score}점"
         item_id = self.item_data.get("item_id")
+        is_psqi = ("PSQI" in str(title).upper()) or ("PSQI" in str(data_type).upper())
+        if is_psqi:
+            try:
+                psqi_answers = self._collect_psqi_answers_for_util()
+                psqi_result = compute_psqi(psqi_answers)
+                print(psqi_result)
+                # 설명에 GPSQI 및 도메인 점수 간단 표기
+                desc_with_score = (
+                    f"PSQI 종합점수(GPSQI) {psqi_result.GPSQI}점 "
+                )
+                # 💡 필요하면 여기서 psqi_result.as_dict()의 derived/domains를
+                #     별도 '파생지표' 질문ID에 저장하도록 inserts에 추가하는 것도 가능.
+                #     (스키마에 저장용 question_id를 마련했다면 여기에 append)
+            except Exception as e:
+                # PSQI 계산 실패해도 설문 저장은 진행
+                print(f"[경고] PSQI 계산 실패: {e}")
+
+        is_meqk = ("MEQ" in str(title).upper()) or ("MEQ" in str(self.item_data.get("data_type","")).upper())
+        if is_meqk:
+            try:
+                ans = self._collect_meqk_answers_for_util()
+                result = compute_meqk(ans, time_rules=self._time_scoring, range_scoring=self._range_scoring)
+                total = int(result["total"])
+                bucket = result["bucket"] or {}
+                bucket_label = bucket.get("label") or "범주 없음"
+                bucket_range = bucket.get("range") or "—"
+                desc_with_score = f"MEQ-K 총점 {total}점 — {bucket_label} ({bucket_range})"
+            except Exception as e:
+                # 계산 실패해도 저장은 계속 진행
+                print(f"[경고] MEQ-K 계산 실패: {e}")
+        item_id = self.item_data.get("item_id") 
 
         # 신규: 제출 시 생성
         if item_id is None:

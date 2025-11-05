@@ -70,7 +70,7 @@ SLEEP_FORMS_BY_SEQ = {
     1: os.path.join(PROJECT_ROOT, "form", "sleep_form", "ISI.json"),
     2: os.path.join(PROJECT_ROOT, "form", "sleep_form", "PSQI.json"),
     3: os.path.join(PROJECT_ROOT, "form", "sleep_form", "KESS.json"),
-    4: os.path.join(PROJECT_ROOT, "form", "sleep_form", "MEQ_K.json"),
+    4: os.path.join(PROJECT_ROOT, "form", "sleep_form", "MEQ-K.json"),
 }
 # ---------------- 서버 체크 ----------------
 def local_db_check():
@@ -389,9 +389,9 @@ def open_survey_form(item_data=None):
             if seq == 1:
                 qmap = ISI_QUESTION_MAPPING
             elif seq == 2:
-                qmap = KESS_QUESTION_MAPPING
-            elif seq == 3:
                 qmap = PSQI_QUESTION_MAPPING
+            elif seq == 3:
+                qmap = KESS_QUESTION_MAPPING
             elif seq == 4:
                 qmap = MEQK_QUESTION_MAPPING
     
@@ -1091,7 +1091,8 @@ def render_emotion_section(parent, emotion_items: list):
 
         if this_item:
             has_data = bool(this_item.get("questions") or this_item.get("questions_raw"))
-            status_text = "입력됨" if has_data else "생성됨(미입력)"
+            
+            status_text = this_item.get("description") if has_data else "생성됨(미입력)"
             bold = "bold" if has_data else "normal"
             collected_at = this_item.get("collected_at")
             try:
@@ -1143,6 +1144,7 @@ def open_sleep_survey(seq: int, existing_item: Optional[dict] = None):
 
     title = SLEEP_TITLES_BY_SEQ.get(seq, f"SLEEP-{seq}")
     json_file_path = SLEEP_FORMS_BY_SEQ.get(seq)
+    qmap = SLEEP_QMAP_BY_SEQ.get(seq)
     if not json_file_path:
         messagebox.showerror("오류", f"수면 설문 폼(json) 경로를 찾을 수 없습니다. seq={seq}")
         return
@@ -1198,7 +1200,7 @@ def render_sleep_section(parent, sleep_items: list):
 
         if this_item:
             has_data = bool(this_item.get("questions") or this_item.get("questions_raw"))
-            status_text = "입력됨" if has_data else "생성됨(미입력)"
+            status_text = status_text = this_item.get("description") if has_data else "생성됨(미입력)"
             bold = "bold" if has_data else "normal"
             collected_at = this_item.get("collected_at")
             try:
