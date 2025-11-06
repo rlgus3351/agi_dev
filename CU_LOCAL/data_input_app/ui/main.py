@@ -18,7 +18,7 @@ import subprocess
 import platform
 from tkvideo import tkvideo
 from utils.survey import format_mds_answers
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 # ✅ sys.path 수정
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
@@ -59,7 +59,7 @@ from api_local.file_api_local import (
 )
 from form.survey import HealthSurveyForm
 from utils.videometa import get_video_metadata
-from config import INSTITUTION, VIDEO_SAVE_BASE
+from config import INSTITUTION, VIDEO_SAVE_BASE, WAV_SAVE_BASE, TEXT_SAVE_BASE
 from utils.db_utils import get_connection, release_connection
 from sqlalchemy import text
 
@@ -354,6 +354,10 @@ def reload_after_close():
         del items_cache[pid]  # ✅ 캐시 제거
     on_select_patient(selected_patient, selected_row)  # 설문 + 파일 목록 리로드
 
+
+PATIENT_LIST = []          # 최근 load_patients_table에서 불러온 환자 리스트
+PATIENT_ROW_MAP = {}       # patient_id -> row_frame
+
 # ---------------- [CTk 기본 설정] ----------------
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("dark-blue")
@@ -491,15 +495,15 @@ def show_survey_items(survey_items):
         ).pack(fill="x", anchor="w")
 
         # 요약
-        summary_text = generate_summary(item) if has_data else "미입력 상태"
-        ctk.CTkLabel(
-            item_summary_frame,
-            text=f"요약: {summary_text}",
-            anchor="w",
-            justify="left",
-            font=ctk.CTkFont(size=11, slant="italic"),
-            text_color="gray"
-        ).pack(fill="x", anchor="w")
+        # summary_text = generate_summary(item) if has_data else "미입력 상태"
+        # ctk.CTkLabel(
+        #     item_summary_frame,
+        #     text=f"요약: {summary_text}",
+        #     anchor="w",
+        #     justify="left",
+        #     font=ctk.CTkFont(size=11, slant="italic"),
+        #     text_color="gray"
+        # ).pack(fill="x", anchor="w")
 
         # ✏️ 수정 버튼
         edit_color = "#357ABD" if has_data else "#4CAF50"
@@ -839,6 +843,30 @@ def open_upload_modal():
 
         row += 1
 
+    VIDEO_TYPES = {"VIDEO", "MOBILE", "WEBCAM"}
+    AUDIO_TYPES = {"VOICE", "AUDIO"}
+    TEXT_TYPES  = {"TXT", "TEXT", "FILE"}
+    TEXT_EXTS   = {".txt", ".csv", ".json"}
+
+    def _infer_kind_by_ext(path: str) -> str:
+        ext = os.path.splitext(path)[1].lower()
+        if ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}:
+            return "video"
+        if ext in {".wav", ".mp3", ".m4a", ".flac", ".aac", ".ogg"}:
+            return "audio"
+        if ext in TEXT_EXTS:
+            return "text"
+        return "other"
+
+    def _base_dir_for_kind(kind, dtype_upper: str) -> str:
+        # kind 우선, 모호하면 data_type으로 보정
+        if kind == "video" or dtype_upper in VIDEO_TYPES:
+            return VIDEO_SAVE_BASE
+        if kind == "audio" or dtype_upper in AUDIO_TYPES:
+            return WAV_SAVE_BASE
+        if kind == "text"  or dtype_upper in TEXT_TYPES:
+            return TEXT_SAVE_BASE
+        return VIDEO_SAVE_BASE
     # 저장 루틴
     def start_registration():
         tasks = []
@@ -868,9 +896,16 @@ def open_upload_modal():
                 # 메타 추출
                 meta = probe_media(local)
 
-                # 저장 파일명 규칙
+                kind = meta.get("kind") or _infer_kind_by_ext(local)
+                if kind == "other":
+                    kind = _infer_kind_by_ext(local)
+            
+                # 파일명: 확장자 그대로 유지
                 file_name = f"{patient_uuid}_{slot_key}_{seq}{file_ext}"
-                server_path = os.path.join(VIDEO_SAVE_BASE, str(patient_uuid), file_name)
+            
+                # ✅ 종류별 베이스 폴더 선택
+                base_dir = _base_dir_for_kind(kind, dt)
+                server_path = os.path.join(base_dir, str(patient_uuid), file_name)
             else:
                 # 새 파일 없고 기존 유지 → 최소 메타만 구성
                 meta = {"kind": "text" if (old_path and os.path.splitext(old_path)[1].lower() in SLOT_CONFIG["txt"]["allowed_exts"]) else "other"}
@@ -1200,76 +1235,112 @@ def on_select_patient(patient, row_frame):
 
     threading.Thread(target=fetch_in_background, daemon=True).start()
 
+
+VIDEO_TYPES = {"VIDEO", "MOBILE", "WEBCAM"}
+AUDIO_TYPES = {"VOICE", "AUDIO"}
+TEXT_EXTS   = {".txt", ".csv", ".json"}
+
+def _resolve_abs_path(p: str) -> str:
+    """상대경로면 프로젝트 루트 기준 절대경로로 보정"""
+    if not p:
+        return p
+    if os.path.isabs(p):
+        return p
+    project_root = Path(__file__).resolve().parent.parent
+    return os.path.abspath(os.path.join(project_root, p))
+
+def _infer_kind_from_ext(path: str) -> str:
+    """확장자로 추론: 'video' | 'audio' | 'text' | 'other'"""
+    if not path:
+        return "other"
+    ext = os.path.splitext(path)[1].lower()
+    if ext in TEXT_EXTS:
+        return "text"
+    # 대충 흔한 포맷들
+    if ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}:
+        return "video"
+    if ext in {".wav", ".mp3", ".m4a", ".flac", ".aac", ".ogg"}:
+        return "audio"
+    return "other"
+
+def _get_item_file_info(item: dict) -> Tuple[str, str]:
+    """
+    (kind, abs_path) 반환.
+    kind: 'video'|'audio'|'text'|'other'
+    1) 데이터타입 기준 메타테이블 조회
+    2) item.file_path 존재 시 확장자/ffprobe로 보조 판별
+    """
+    item_id = item.get("item_id")
+    dtype   = str(item.get("data_type", "")).upper()
+
+    # 1) 타입별 메타테이블 우선
+    try:
+        if dtype in VIDEO_TYPES:
+            metas, err = fetch_video_metadata_by_item_id(item_id)
+            if not err and metas:
+                p = _resolve_abs_path(metas[0].get("file_path"))
+                return ("video", p)
+        elif dtype in AUDIO_TYPES:
+            metas, err = fetch_audio_metadata_by_item_id(item_id)
+            if not err and metas:
+                p = _resolve_abs_path(metas[0].get("file_path"))
+                return ("audio", p)
+        elif dtype in {"TXT", "TEXT", "FILE"}:
+            metas, err = fetch_file_metadata_by_item_id(item_id)
+            if not err and metas:
+                p = _resolve_abs_path(metas[0].get("file_path"))
+                # 확장자 기반으로 최종 확정
+                return (_infer_kind_from_ext(p), p)
+    except Exception as e:
+        print(f"[메타 조회 경고] item_id={item_id}, dtype={dtype}, err={e}")
+
+    # 2) item 자체의 file_path fallback
+    path = _resolve_abs_path(item.get("file_path", "")) if item.get("file_path") else None
+    if path and os.path.exists(path):
+        # ffprobe로 한 번 더 정교하게
+        meta = probe_media(path)
+        k = meta.get("kind") or _infer_kind_from_ext(path)
+        return (k, path)
+
+    # 3) 최종 실패
+    return ("other", path or "")
+
 def open_file_action(file_data):
     """
-    파일 항목의 '보기' 버튼 클릭 시 호출됩니다.
-    비디오 항목이면 내부 비디오 재생기로 띄움.
+    파일 항목 열기:
+    - VIDEO: 외부 플레이어로 재생
+    - AUDIO: OS 기본앱으로 열기
+    - TEXT : OS 기본앱으로 열기(메모장/에디터)
+    - 기타 : OS 기본앱 시도
     """
     print(f"DEBUG: open_file_action 호출됨 - {file_data}")
-    data_type = file_data.get('data_type', 'FILE')
-    item_id = file_data.get('item_id', None)
-
+    item_id = file_data.get('item_id')
     if not item_id:
         messagebox.showerror("오류", "item_id가 없습니다.")
         return
-    
-    # 🎥 비디오 처리 (MOBILE/WEBCAM/VIDEO 모두 비디오로 간주)
-    if str(data_type).upper() in {"VIDEO", "MOBILE", "WEBCAM"}:
-        print(f"비디오 항목 보기 요청: Item ID {item_id}")
 
-        # 1. 메타데이터 조회
-        video_meta_list, error_msg = fetch_video_metadata_by_item_id(item_id)
-        if error_msg:
-            show_video_player_window(item_id, f"메타데이터 오류: {error_msg}", error=True)
-            return
-        
-        if not video_meta_list:
-            show_video_player_window(item_id, f"Item {item_id}에 대한 메타데이터 없음", error=True)
-            return
-        
-        # 2. file_path 추출 및 보정
-        video_meta = video_meta_list[0]
-        file_path = video_meta.get("file_path")
+    kind, abs_path = _get_item_file_info(file_data)
+    print(f"[OPEN] kind={kind}, path={abs_path}")
 
-        if not file_path:
-            show_video_player_window(item_id, f"file_path 필드 없음", error=True)
+    if not abs_path or not os.path.exists(abs_path):
+        messagebox.showerror("오류", f"파일을 찾을 수 없습니다.\n경로: {abs_path or '(경로 없음)'}")
+        return
+
+    try:
+        if kind == "video":
+            play_video_external(abs_path)  # 외부 플레이어
             return
 
-        if not os.path.isabs(file_path):
-            project_root = Path(__file__).resolve().parent.parent
-            file_path = os.path.join(project_root, file_path)
-            file_path = os.path.abspath(file_path)
-
-        print(f"DEBUG: 최종 비디오 경로 = {file_path}")
-
-        # 3. 존재 여부 확인 및 재생
-        if not os.path.exists(file_path):
-            show_video_player_window(
-                item_id,
-                f"❌ 비디오 파일을 찾을 수 없습니다.\n경로: {file_path}",
-                error=True
-            )
+        # audio / text / other → OS 기본앱
+        if platform.system() == "Windows":
+            os.startfile(abs_path)
+        elif platform.system() == "Darwin":
+            subprocess.call(["open", abs_path])
         else:
-            if os.path.exists(file_path):
-                play_video_external(file_path)  # ✅ 외부 플레이어 실행
-            else:
-                show_video_player_window(item_id, f"파일 없음: {file_path}", error=True)
+            subprocess.call(["xdg-open", abs_path])
 
-    else:
-        # 그 외 파일(VOICE, TXT 등)은 OS 기본앱으로 오픈
-        path = file_data.get('file_path')
-        if path and not os.path.isabs(path):
-            project_root = Path(__file__).resolve().parent.parent
-            path = os.path.abspath(os.path.join(project_root, path))
-        try:
-            if platform.system() == "Windows":
-                os.startfile(path)
-            elif platform.system() == "Darwin":
-                subprocess.call(["open", path])  # macOS
-            else:
-                subprocess.call(["xdg-open", path])  # Linux
-        except Exception as e:
-            messagebox.showerror("알림", f"일반 파일 열기 실패\n{e}")
+    except Exception as e:
+        messagebox.showerror("실행 오류", f"파일 열기 실패\n{e}")
 
 def play_video_external(file_path):
     try:
@@ -1619,24 +1690,67 @@ def process_items(items):
     # ③ 파일 목록은 하단 프레임에 그대로
     show_file_items(upload_list_frame, file_items)
 
+
+def select_and_focus_patient(patient_id: str):
+    """테이블에서 해당 환자 행을 찾아 선택/하이라이트하고,
+    on_select_patient을 호출하여 설문/파일을 즉시 로드한다."""
+    global selected_patient, selected_row
+
+    if not patient_id:
+        return
+
+    row_frame = PATIENT_ROW_MAP.get(patient_id)
+    if not row_frame:
+        # 행이 아직 렌더링되지 않았거나 ID 매칭 실패
+        # 가장 가까운 후보(마지막 행 등)로 대체 선택하고 종료
+        if PATIENT_LIST:
+            fallback = PATIENT_LIST[-1]
+            rf = PATIENT_ROW_MAP.get(fallback["patient_id"])
+            if rf:
+                on_select_patient(fallback, rf)
+        return
+
+    # 해당 patient 객체 찾기
+    p = next((x for x in PATIENT_LIST if x.get("patient_id") == patient_id), None)
+    if not p:
+        return
+
+    on_select_patient(p, row_frame)
+
+    try:
+        # 화면상 스크롤을 사용한다면 여기에서 yview_moveto 등으로 해당 행 포커싱 가능
+        row_frame.focus_set()
+    except Exception:
+        pass
+
 # ---------------- 환자 목록 테이블 로드 ----------------
-def load_patients_table():
+def load_patients_table(preselect_id: Optional[str] = None):
+    global PATIENT_LIST, PATIENT_ROW_MAP
+
+    # ① 테이블 비우기
     for widget in table_frame.winfo_children():
         widget.destroy()
 
+    # ② 데이터 로드
     try:
         patients = fetch_patients(INSTITUTION)
     except Exception as e:
         show_server_error()
         return
 
+    PATIENT_LIST = patients or []
+    PATIENT_ROW_MAP = {}
+
     def on_row_click(event, p, rf):
         # 🗑 버튼 클릭은 무시
-        if event.widget.cget("text") == "🗑":
-            return
+        try:
+            if getattr(event.widget, "cget", None) and event.widget.cget("text") == "🗑":
+                return
+        except Exception:
+            pass
         on_select_patient(p, rf)
 
-    for r, patient in enumerate(patients):
+    for r, patient in enumerate(PATIENT_LIST):
         initials = patient.get("patient_initials") or "이니셜 없음"
         birth = patient.get("birth_date") or "생년월일 없음"
         gender = patient.get("gender") or "?"
@@ -1649,7 +1763,6 @@ def load_patients_table():
                 pass
 
         created_ts_val = patient.get("created_ts")
-
         if created_ts_val:
             try:
                 if isinstance(created_ts_val, datetime):
@@ -1662,14 +1775,8 @@ def load_patients_table():
                 created_ts = "?"
         else:
             created_ts = "?"
-        if is_data_complete:
-            text_color = "gray60"   # 연한 회색 (뿌옇게)
-            text_weight = "normal"
-        else:
-            text_color = "black"
-            text_weight = "normal"
 
-        is_selected = selected_patient and selected_patient["patient_id"] == patient["patient_id"]
+        is_selected = selected_patient and selected_patient.get("patient_id") == patient.get("patient_id")
         bg_color = "#C4E1FF" if is_selected else "transparent"
         text_weight = "bold" if is_selected else "normal"
         text_color = "black" if is_selected else "gray20"
@@ -1679,6 +1786,9 @@ def load_patients_table():
         row_frame.grid(row=r, column=0, columnspan=5, sticky="ew", pady=3, padx=5)
         row_frame.configure(cursor="hand2")
         row_frame.bind("<Button-1>", lambda e, p=patient, rf=row_frame: on_row_click(e, p, rf))
+
+        # 🔗 행 맵핑 저장
+        PATIENT_ROW_MAP[patient["patient_id"]] = row_frame
 
         # 라벨 생성 + 클릭 바인딩
         def create_label(col, text, width):
@@ -1691,7 +1801,6 @@ def load_patients_table():
         create_label(1, birth, widths[1])
         create_label(2, gender, widths[2])
         create_label(3, created_ts, widths[3])
-    
 
         def make_delete_func(pid):
             return lambda: (delete_patient(pid, INSTITUTION), load_patients_table())
@@ -1705,6 +1814,10 @@ def load_patients_table():
             width=widths[4],
             command=make_delete_func(patient["patient_id"]) 
         ).grid(row=0, column=4, padx=5, pady=3)
+
+    # ③ 지정된 ID가 있으면 자동 선택/포커스
+    if preselect_id:
+        root.after(0, lambda: select_and_focus_patient(preselect_id))
 
 
 btn_frame = ctk.CTkFrame(frame_patient)
