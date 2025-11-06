@@ -2,3 +2,7 @@
 2. 수면 설문지 : S_SURVEY
 3. 기초 평가 : B_SURVEY
 정서 설문지 3건? 1건에서 처리?
+
+
+1. audio_meta insert
+2. video_meta insert

@@ -39,5 +39,7 @@ DEBUG_MODE = True
 LOG_FILE = "app.log"
 
 # 로컬 경로
-LOCAL_UPLOAD_DIR = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
-VIDEO_SAVE_BASE = r"C:\Users\user\Desktop\DEV_AGI\parkinson\video"
+LOCAL_UPLOAD_DIR = r"C:\Users\user\Desktop\DEV_AGI\MDD\output\video"
+VIDEO_SAVE_BASE = r"C:\Users\user\Desktop\DEV_AGI\MDD\video"
+TEXT_SAVE_BASE = r"C:\Users\user\Desktop\DEV_AGI\MDD\ecg"
+WAV_SAVE_BASE = r"C:\Users\user\Desktop\DEV_AGI\MDD\wav"
