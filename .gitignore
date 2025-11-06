@@ -55,3 +55,9 @@
 /voicecrypto/output/*
 /voicecrypto/sample/*
 /voicecrypto/restored/*
+
+
+/CU_LOCAL/data_anonymization_app/venv/Lib/*
+/CU_LOCAL/data_anonymization_app/venv/Scripts/*
+/CU_LOCAL/data_anonymization_app/venv/Include/*
+/CU_LOCAL/data_anonymization_app/venv/share/*
