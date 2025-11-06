@@ -96,7 +96,7 @@ def save_audio_metadata(item_id: int, audio_meta_list: List[dict]) -> Tuple[bool
                     a.get("channels"),
                     a.get("bit_rate_kbps"),
                     a.get("codec"),
-                    a.get("needs_anonymization"),
+                    a.get("needs_anonymization","True"),
                     a.get("data_category", "MDD"),
                 ))
             conn.commit()

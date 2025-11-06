@@ -970,8 +970,15 @@ def open_upload_modal():
 
                     if kind == "video":
                         # video 전용 스키마/테이블 사용 (기존 API)
+                        video_file_name = (
+                            (t.get("file_name")) or
+                            (os.path.basename(target) if target else None) or
+                            (os.path.basename(t.get("old_path")) if t.get("old_path") else None) or
+                            f"{patient_uuid}_video_{seq}.{(t['file_ext'] or '').lstrip('.') or 'mp4'}"
+                        )
                         payload = {
                             "item_id": item_id,
+                            "file_name": video_file_name,                # ✅ 추가
                             "file_path": target,
                             "file_ext": (t["file_ext"] or "").lstrip("."),
                             "file_size_mb": meta.get("file_size_mb"),
@@ -1019,7 +1026,7 @@ def open_upload_modal():
                             "bit_rate_kbps": kbps,
                             "codec": meta.get("codec_name"),
                             "file_ext": (t["file_ext"] or "").lstrip(".") if t["file_ext"] else (os.path.splitext(target)[1].lstrip(".") if target else None),
-                            "needs_anonymization": False,   # 음성은 필요시 True로 바꾸세요
+                            "needs_anonymization": True,   # 음성은 필요시 True로 바꾸세요
                             "shooting_ts": meta.get("creation_time"),
                             "data_category": "MDD",
                         }
