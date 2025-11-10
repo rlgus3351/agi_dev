@@ -94,10 +94,10 @@ model_path = CFG_MODEL_PATH or os.path.join(base_dir, "model", "model.pt")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-FINAL_VIDEO_DIR = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
+FINAL_VIDEO_DIR = r"C:\Users\user\Desktop\DEV_AGI\MDD\output\video"
 
-VIDEO_PATH = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
-JSON_PATH  = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\json"
+VIDEO_PATH = r"C:\Users\user\Desktop\DEV_AGI\MDD\output\video"
+JSON_PATH  = r"C:\Users\user\Desktop\DEV_AGI\MDD\output\json"
 
 if device == "cuda":
     try:

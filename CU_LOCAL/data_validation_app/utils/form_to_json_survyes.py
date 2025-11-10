@@ -350,7 +350,8 @@ def export_emotion_bundle_for_patient(patient_id: str, out_dir: str = "./json") 
     if err:
         return None, err
     out_dir_patient = os.path.join(out_dir, _safe(patient_id))  # ⬅️ 환자 폴더
-    out_path = os.path.join(out_dir_patient, f"{_safe(patient_id)}_E_bundle_{_now_tag()}.json")
+    # 🔻 시간 태그 제거, 항상 같은 파일명
+    out_path = os.path.join(out_dir_patient, f"{_safe(patient_id)}_E_bundle.json")
     ok, err2 = save_json_to_file(data, out_path)
     return (out_path, None) if ok else (None, err2)
 
@@ -413,7 +414,7 @@ def export_sleep_bundle_for_patient(patient_id: str, out_dir: str = "./json") ->
     if err:
         return None, err
     out_dir_patient = os.path.join(out_dir, _safe(patient_id))  # ⬅️ 환자 폴더
-    out_path = os.path.join(out_dir_patient, f"{_safe(patient_id)}_S_bundle_{_now_tag()}.json")
+    out_path = os.path.join(out_dir_patient, f"{_safe(patient_id)}_S_bundle.json")
     ok, err2 = save_json_to_file(data, out_path)
     return (out_path, None) if ok else (None, err2)
 
