@@ -61,3 +61,8 @@
 /CU_LOCAL/data_anonymization_app/venv/Scripts/*
 /CU_LOCAL/data_anonymization_app/venv/Include/*
 /CU_LOCAL/data_anonymization_app/venv/share/*
+
+/CU_LOCAL/data_input_app/venv/Lib/*
+/CU_LOCAL/data_input_app/venv/Scripts/*
+/CU_LOCAL/data_input_app/venv/Include/*
+/CU_LOCAL/data_input_app/venv/share/*
