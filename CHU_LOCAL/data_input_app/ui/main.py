@@ -75,7 +75,65 @@ def init_program():
         callback=after_check,
         loading_text="로컬 DB 연결 확인 중입니다..."
     )
+def open_add_patient():
+    modal = ctk.CTkToplevel(root)
+    modal.title("환자 추가")
+    modal.geometry("400x400")
+    modal.transient(root)
+    modal.grab_set()
 
+    initials_var = tk.StringVar()
+    birth_var = tk.StringVar()
+    gender_var = tk.StringVar(value="남성")
+
+    ctk.CTkLabel(modal, text="이니셜").pack(pady=5)
+    ctk.CTkEntry(modal, textvariable=initials_var).pack(pady=5)
+
+    ctk.CTkLabel(modal, text="생년월일 (YYYY-MM-DD)").pack(pady=5)
+    ctk.CTkEntry(modal, textvariable=birth_var).pack(pady=5)
+
+    ctk.CTkLabel(modal, text="성별").pack(pady=5)
+    gender_frame = ctk.CTkFrame(modal)
+    gender_frame.pack(pady=5)
+
+    ctk.CTkRadioButton(gender_frame, text="남성", variable=gender_var, value="남성").pack(side="left", padx=5)
+    ctk.CTkRadioButton(gender_frame, text="여성", variable=gender_var, value="여성").pack(side="left", padx=5)
+    ctk.CTkRadioButton(gender_frame, text="기타", variable=gender_var, value="기타").pack(side="left", padx=5)
+
+    def submit_patient():
+        payload = {
+            "patient_initials": initials_var.get(),
+            "birth_date": birth_var.get() or None,
+            "institution": INSTITUTION,
+            "gender": gender_var.get(),
+            "is_data_complete": False,
+            "completion_date": None
+        }
+        # 로딩 기능 추가 고려
+        # try:
+        #     add_patient(payload, INSTITUTION)
+        #     messagebox.showinfo("성공", "환자 등록 완료")
+        # except Exception as e:
+        #     messagebox.showerror("오류", f"환자 등록 실패: {e}")
+        
+        # load_patients_table()
+        # modal.destroy()
+        def after_register(_):
+            CTkMessagebox(title="성공", message="환자 등록 완료", icon="check")
+            load_patients_table()
+            modal.destroy()
+
+        def on_error(e):
+            CTkMessagebox(title="오류", message=f"환자 등록 실패: {e}", icon="cancel")
+
+        run_with_loading(
+            parent_frame=modal,
+            fetch_function=lambda: add_patient(payload, INSTITUTION),
+            callback=after_register,
+            loading_text="환자 등록 중입니다..."
+        )
+
+    ctk.CTkButton(modal, text="등록", command=submit_patient).pack(pady=20)
 
 def show_server_error():
     """DB 연결 실패 시 테이블 영역에 표시"""
@@ -126,7 +184,19 @@ for i, (h, w) in enumerate(zip(headers, widths)):
     lbl = ctk.CTkLabel(header_frame, text=h, font=("", 13, "bold"), width=w, anchor="w")
     lbl.grid(row=0, column=i, padx=5, pady=5, sticky="w")
 
-table_frame = ctk.CTkFrame(frame_patient)
+# 🔽 오른쪽 끝에 여유 공간 주고 버튼 배치
+header_frame.grid_columnconfigure(len(headers), weight=1)
+
+add_btn = ctk.CTkButton(
+    header_frame,
+    text="환자 추가",
+    font=("", 13),
+    width=80,
+    command=open_add_patient()
+)
+add_btn.grid(row=0, column=len(headers), padx=(10, 5), pady=5, sticky="e")
+
+table_frame = ctk.CTkScrollableFrame(frame_patient)
 table_frame.pack(fill="both", expand=True)
 
 
@@ -1127,10 +1197,10 @@ def load_patients_table():
         ).grid(row=0, column=4, padx=5, pady=3)
 
 
-btn_frame = ctk.CTkFrame(frame_patient)
-btn_frame.pack(pady=5)
-ctk.CTkButton(btn_frame, text="환자 추가", font=("", 14),
-              command=lambda: open_add_patient()).pack(side="left", padx=5)
+# btn_frame = ctk.CTkFrame(frame_patient)
+# btn_frame.pack(pady=5)
+# ctk.CTkButton(btn_frame, text="환자 추가", font=("", 14),
+#               command=lambda: open_add_patient()).pack(side="left", padx=5)
 
 frame_survey = ctk.CTkFrame(root)
 frame_survey.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
@@ -1162,65 +1232,7 @@ def show_empty_state():
         widget.destroy()
     ctk.CTkLabel(score_frame, text="환자를 선택해주세요.", font=("", 14, "italic"), text_color="gray").pack(pady=20)
 
-def open_add_patient():
-    modal = ctk.CTkToplevel(root)
-    modal.title("환자 추가")
-    modal.geometry("400x400")
-    modal.transient(root)
-    modal.grab_set()
 
-    initials_var = tk.StringVar()
-    birth_var = tk.StringVar()
-    gender_var = tk.StringVar(value="남성")
-
-    ctk.CTkLabel(modal, text="이니셜").pack(pady=5)
-    ctk.CTkEntry(modal, textvariable=initials_var).pack(pady=5)
-
-    ctk.CTkLabel(modal, text="생년월일 (YYYY-MM-DD)").pack(pady=5)
-    ctk.CTkEntry(modal, textvariable=birth_var).pack(pady=5)
-
-    ctk.CTkLabel(modal, text="성별").pack(pady=5)
-    gender_frame = ctk.CTkFrame(modal)
-    gender_frame.pack(pady=5)
-
-    ctk.CTkRadioButton(gender_frame, text="남성", variable=gender_var, value="남성").pack(side="left", padx=5)
-    ctk.CTkRadioButton(gender_frame, text="여성", variable=gender_var, value="여성").pack(side="left", padx=5)
-    ctk.CTkRadioButton(gender_frame, text="기타", variable=gender_var, value="기타").pack(side="left", padx=5)
-
-    def submit_patient():
-        payload = {
-            "patient_initials": initials_var.get(),
-            "birth_date": birth_var.get() or None,
-            "institution": INSTITUTION,
-            "gender": gender_var.get(),
-            "is_data_complete": False,
-            "completion_date": None
-        }
-        # 로딩 기능 추가 고려
-        # try:
-        #     add_patient(payload, INSTITUTION)
-        #     messagebox.showinfo("성공", "환자 등록 완료")
-        # except Exception as e:
-        #     messagebox.showerror("오류", f"환자 등록 실패: {e}")
-        
-        # load_patients_table()
-        # modal.destroy()
-        def after_register(_):
-            CTkMessagebox(title="성공", message="환자 등록 완료", icon="check")
-            load_patients_table()
-            modal.destroy()
-
-        def on_error(e):
-            CTkMessagebox(title="오류", message=f"환자 등록 실패: {e}", icon="cancel")
-
-        run_with_loading(
-            parent_frame=modal,
-            fetch_function=lambda: add_patient(payload, INSTITUTION),
-            callback=after_register,
-            loading_text="환자 등록 중입니다..."
-        )
-
-    ctk.CTkButton(modal, text="등록", command=submit_patient).pack(pady=20)
 
 def open_survey_input():
     if not selected_patient:

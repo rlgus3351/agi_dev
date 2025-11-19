@@ -944,8 +944,9 @@ def process_items(items):
     for item in items:
         data_category = str(item.get('data_category', '')).strip()
         data_type = str(item.get('data_type', '')).upper()
-        print('item',item)
-        # 설문 분류 기준: data_category 명칭으로 구분
+        print('item', item)
+
+        # 설문 분류 기준
         if data_type == "B_SURVEY":
             basic_survey_items.append(item)
         elif data_type == "E_SURVEY":
@@ -955,7 +956,6 @@ def process_items(items):
         elif "VIDEO" in data_type or "FILE" in data_type:
             file_items.append(item)
         else:
-            # 혹시 분류 안되는 나머지 → 일단 파일 항목으로
             file_items.append(item)
 
     # ---------------- 설문 영역 초기화 ----------------
@@ -964,38 +964,21 @@ def process_items(items):
 
     # ---------------- 공통 렌더 함수 ----------------
     def render_section(title, category_code, survey_list):
-        """
-        각 설문 섹션 출력 + 데이터 없을 경우 '추가하기' 버튼 표시
-        category_code: 'B_SURVEY' / 'E_SURVEY' / 'S_SURVEY'
-        """
         section_frame = ctk.CTkFrame(score_frame)
-        section_frame.pack(fill="x", pady=(10, 10), padx=10)
-
-        # 제목
-        ctk.CTkLabel(
-            section_frame,
-            text=f"📋 {title}",
-            font=ctk.CTkFont(size=15, weight="bold"),
-            text_color="#1B1C1D"
-        ).pack(anchor="w", pady=(5, 3))
+        section_frame.pack(fill="x", pady=10, padx=10)
+        ctk.CTkLabel(section_frame, text=f"📋 {title}", font=ctk.CTkFont(size=15, weight="bold")).pack(anchor="w")
 
         if survey_list:
             show_survey_items(survey_list)
         else:
-            # 안내 문구
-            ctk.CTkLabel(
-                section_frame,
-                text=f"{title} 데이터가 없습니다.",
-                font=("", 13, "italic"),
-                text_color="gray"
-            ).pack(pady=(10, 5))
+            ctk.CTkLabel(section_frame, text=f"{title} 데이터가 없습니다.",
+                         font=("", 13, "italic"), text_color="gray").pack(pady=5)
 
-            # 카테고리별 JSON 파일 매핑
             json_map = {
                 "기초 평가": [os.path.join(PROJECT_ROOT, "form", "basic_form", "basic.json")],
                 "정서 설문지": [
                     os.path.join(PROJECT_ROOT, "form", "emotion_form", "phq9.json"),
-                    os.path.join(PROJECT_ROOT, "form", "emotion_form", "MADRS.json"),
+                    os.path.join(PROJECT_ROOT, "form", "emotion_form", "madras.json"),
                     os.path.join(PROJECT_ROOT, "form", "emotion_form", "anxiety_disorder.json"),
                 ],
                 "수면 설문지": [
@@ -1006,21 +989,77 @@ def process_items(items):
                 ],
             }
 
-            # 버튼 클릭 시 첫 JSON 로드 (단일 설문용)
+            # ✅ 버튼 클릭 시 다중 설문 순차 입력 지원
             def open_default_form():
                 json_files = json_map.get(title, [])
                 if not json_files:
                     messagebox.showerror("오류", f"{title}에 해당하는 폼을 찾을 수 없습니다.")
                     return
 
-                json_file = json_files[0]  # 기본 하나만 오픈
-                new_item_data = {
-                    "data_category": "MDD",
-                    "data_type": title,
-                    "seq": 1,
-                    "json_file": json_file,   # ✅ 전달
-                }
-                open_survey_form(new_item_data)
+                # 🔁 여러 설문 JSON 파일 순차 입력을 위해 재귀적 실행
+                def open_next_survey(index=0):
+                    """index 번째 설문 JSON을 열고, 저장 완료 시 자동 다음 설문"""
+                    if index >= len(json_files):
+                        CTkMessagebox(title="완료", message=f"{title} 모든 설문 입력이 완료되었습니다 ✅", icon="check")
+                        reload_after_close()
+                        return
+
+                    json_file = json_files[index]
+                    form_name = os.path.splitext(os.path.basename(json_file))[0]
+                    new_item_data = {
+                        "data_category": "MDD",
+                        "data_type": f"{title} - {form_name.upper()}",
+                        "seq": index + 1,
+                        "json_file": json_file,
+                    }
+
+                    modal = ctk.CTkToplevel(root)
+                    modal.title(f"{title} 입력 ({form_name.upper()})")
+                    modal.geometry("1200x900")
+                    modal.grab_set()
+
+                    patient_uuid = selected_patient["patient_id"]
+                    initials = selected_patient.get("patient_initials", "?")
+
+                    ctk.CTkLabel(
+                        modal,
+                        text=f"📝 {title} - {form_name.upper()} ({initials})",
+                        font=("", 16, "bold")
+                    ).pack(pady=10)
+
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        json_data = json.load(f)
+                    is_table_form = any("sections" in v or "body" in v for v in json_data.values())
+
+                    # ✅ 저장 완료 시 자동으로 다음 설문으로 이동
+                    def on_form_done():
+                        modal.destroy()
+                        open_next_survey(index + 1)
+
+                    if is_table_form:
+                        from form.generic_survey import GenericSurveyForm
+                        form_frame = GenericSurveyForm(modal, json_file=json_file)
+                    else:
+                        from form.survey import HealthSurveyForm
+                        form_frame = HealthSurveyForm(
+                            modal,
+                            json_file=json_file,
+                            patient_id=patient_uuid,
+                            item_data=new_item_data,
+                            on_close_callback=on_form_done  # ✅ 저장 완료 시 자동 이동
+                        )
+
+                    form_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+                    # ❌ 수동으로 닫아도 다음으로 이동
+                    def on_close():
+                        modal.destroy()
+                        open_next_survey(index + 1)
+
+                    modal.protocol("WM_DELETE_WINDOW", on_close)
+
+                # 🚀 첫 번째 설문부터 시작
+                open_next_survey(0)
 
             ctk.CTkButton(
                 section_frame,
@@ -1035,8 +1074,6 @@ def process_items(items):
     render_section("기초 평가", "B_SURVEY", basic_survey_items)
     render_section("정서 설문지", "E_SURVEY", emotion_survey_items)
     render_section("수면 설문지", "S_SURVEY", sleep_survey_items)
-
-    # ---------------- 파일 항목 영역 출력 ----------------
     show_file_items(upload_list_frame, file_items)
 
 # ---------------- 환자 목록 테이블 로드 ----------------
