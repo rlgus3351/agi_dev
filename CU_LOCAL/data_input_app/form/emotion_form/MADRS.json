@@ -1,0 +1,91 @@
+{
+  "MADRS": {
+    "header": {
+      "title": "Montgomery–Åsberg",
+      "description": "우울증 평가 척도 (평가자용)",
+      "columns": [
+        "번호",
+        "문항",
+        "점수"
+      ]
+    },"scoring": {
+      "0-6": "정상",
+      "7-19": "경도",
+      "20-34": "중등도",
+      "35-60": "고도"
+    },
+    "body": [
+      {
+        "id": 1,
+        "question": "겉으로 드러나는 슬픔",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 2,
+        "question": "스스로 보고하는 슬픔",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 3,
+        "question": "내적 긴장감",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 4,
+        "question": "수면 저하",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 5,
+        "question": "식욕 저하",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 6,
+        "question": "집중의 어려움",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 7,
+        "question": "나태(권태)",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 8,
+        "question": "느낌의 상실",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 9,
+        "question": "비관적 사고",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      },
+      {
+        "id": 10,
+        "question": "자살사고",
+        "type": "input-number",
+        "min": 0,
+        "max": 6
+      }
+      
+    ]
+  }
+}

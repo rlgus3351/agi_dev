@@ -1,0 +1,66 @@
+{
+  "엡워스 졸음척도": {
+    "header": {
+      "title": "엡워스 졸음척도",
+      "description": "",
+      "columns": [
+        "번호",
+        "문항",
+        "아에 없음",
+        "약간 있음",
+        "가능성이\n중등도임",
+        "높음"
+      ]
+    },
+    "body": [
+      {
+        "id": 1,
+        "question": "앉아서 책(신문,잡지,서류 등)을 읽을 때",
+         "type": "radio",
+        "options": [0, 1, 2, 3]
+      },
+      {
+        "id": 2,
+        "question": "TV를 볼 때",
+        "type": "radio",
+        "options": [0, 1, 2, 3]
+      },
+      {
+        "id": 3,
+        "question": "공공장소(모임,극장 등)에서 가만히 앉아 있을 때",
+        "type": "radio",
+        "options": [0, 1, 2, 3]
+      },
+      {
+        "id": 4,
+        "question": "정차없이 1시간 동안 운행 중인\n 차에 승객으로 앉아 있을 때",
+        "type": "radio",
+        "options": [0, 1, 2, 3]
+      },
+      {
+        "id": 5,
+        "question": "오후에 주의상황이 허락되어 쉬려고 누워 있을 때",
+        "type": "radio",
+        "options": [0, 1, 2, 3]
+      },
+      {
+        "id": 6,
+        "question": "앉아서 상대방과 이야기할 때",
+        "type": "radio",
+        "options": [0, 1, 2, 3]
+      },
+      {
+        "id": 7,
+        "question": "반주를 곁들이지 않은 점심식사 후 조용히 앉아 있을 때",
+        "type": "radio",
+        "options": [0, 1, 2, 3]
+      },
+      {
+        "id": 8,
+        "question": "교통 혼잡으로 몇 분 동안 멈춰선 차 안에서",
+        "type": "radio",
+        "options": [0, 1, 2, 3]
+      }
+    ]
+  }
+}

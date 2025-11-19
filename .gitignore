@@ -21,8 +21,6 @@
 
 *.mp4
 *.mov
-*.json
-*.zip
 *.pyc
 
 /CHU_LOCAL/test/venv_gpu/Lib/*

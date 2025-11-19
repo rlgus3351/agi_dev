@@ -124,7 +124,7 @@ MIN_ENCRYPT_CONF = 0.30       # JSON에 복구용 ROI로 담는 최소 신뢰도
 IOU = 0.5                     # NMS IOU
 EXPAND_RATIO = 0.20           # bbox 확장(옆얼굴 커버)
 MAX_HOLD_FRAMES = 3           # 탐지 끊김 시 이전 bbox 유지 프레임 수
-MOSAIC_BLOCK_DIVISOR = 20     # 모자이크 블록 크기(값↑ = 블록↑)
+MOSAIC_BLOCK_DIVISOR = 25     # 모자이크 블록 크기(값↑ = 블록↑)
 
 # ----------------------------------------
 # ✅ SHA256 해시 계산
@@ -231,30 +231,33 @@ def get_display_id_from_item(item_id: int):
         item = get_item_by_id(item_id)
         if not item:
             print("⚠️ item 정보를 찾지 못했습니다.")
-            return None, None
+            return None, None, None
 
         patient_id = item.get("patient_id")
         seq = item.get("seq")
         if not patient_id:
             print("⚠️ item에 patient_id가 없습니다.")
-            return None, seq
+            return None, seq, None
 
         patient = read_patient(str(patient_id))
         if not patient:
             print("⚠️ 환자 정보를 찾지 못했습니다.")
-            return None, seq
+            return None, seq, patient_id
 
         display_id = patient.get("display_id") or patient.get("patient_initials")
         if display_id:
             print(f"🧩 displayID 조회 완료: {display_id}")
             print(f"🧩 seq 조회 완료: {seq}")
+            print(f"🧩 patient_id 조회 완료: {patient_id}")
         else:
             print("⚠️ display_id가 환자 정보에 없습니다.")
 
-        return display_id, seq
+        # ✅ 세 개 모두 반환
+        return display_id, seq, patient_id
+
     except Exception as e:
         print(f"❌ display_id 조회 실패: {e}")
-        return None, None
+        return None, None, None
 
 # ----------------------------------------
 # ✅ 실패 로그 저장
@@ -301,42 +304,92 @@ def _encrypt_roi_png(roi_bgr):
         base64.b64encode(ct).decode()
     )
 
+def get_rotation_angle(path: str) -> int:
+    """ffprobe로 회전 메타데이터 읽기 (0, 90, 180, 270 반환)"""
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream_tags=rotate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            path
+        ]
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        val = r.stdout.strip()
+        if val:
+            return int(val)
+    except Exception:
+        pass
+    return 0  # 기본값 (회전 없음)
+
+
+def detect_and_fix_rotation(frame, rotation_meta: int):
+    """
+    영상의 실제 방향을 자동 감지 및 보정.
+    - 메타데이터 회전값이 0이라도 프레임 종횡비를 통해 가로/세로형 판단
+    - 실제로 오른쪽으로 누운 경우(시계 방향 90°)는 반시계로 회전
+    """
+    h, w = frame.shape[:2]
+    corrected = False
+
+    if rotation_meta == 0:
+    # 회전 정보가 없으면 그대로 사용 (절대 돌리지 않음)
+        frame = frame
+    elif rotation_meta == 90:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    elif rotation_meta == 180:
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+    elif rotation_meta == 270:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+    if corrected:
+        print(f"🧭 자동 회전 보정 적용됨 ({rotation_meta}°)")
+    return frame, rotation_meta
+
 def process_video(meta: dict):
     raw_path = meta["file_path"]
     input_path = raw_path
     print(f"[DEBUG] raw_path: {raw_path}")
-    print(f"[DEBUG] normalized to container path: {input_path}")
     filename = os.path.basename(input_path)
     filename_wo_ext = os.path.splitext(filename)[0]
     video_id = meta.get("video_metadata_id")
     item_id = meta.get("item_id")
-    # ✅ 출력 디렉토리(config 경로) 사용
+
     os.makedirs(FINAL_VIDEO_DIR, exist_ok=True)
     os.makedirs(JSON_DIR, exist_ok=True)
 
-   # 익명화 중간 산출물(_anonymized.mp4)은 VIDEO 폴더로
     output_path = os.path.join(FINAL_VIDEO_DIR, f"{filename_wo_ext}_anonymized.mp4")
 
-    display_id, seq = get_display_id_from_item(item_id) if item_id else (None, None)
-
-    if display_id and seq:
-        json_filename = f"{display_id}_{seq}.json"
-    elif display_id:
-        json_filename = f"{display_id}_{filename}.json"
-    else:
-        json_filename = f"{filename_wo_ext}_rois.json"
+    
+    display_id, seq, patient_id = get_display_id_from_item(item_id)
+    json_filename = (
+        f"{display_id}_{seq}.json" if (display_id and seq)
+        else f"{display_id}_{filename}.json" if display_id
+        else f"{filename_wo_ext}_rois.json"
+    )
     json_path = os.path.join(JSON_DIR, json_filename)
     start_time = datetime.utcnow()
+
     try:
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
             raise RuntimeError(f"❌ 비디오를 열 수 없습니다: {input_path}")
 
+        # ✅ 회전 정보 감지 및 첫 프레임 보정
+        rotation = get_rotation_angle(input_path)
+        print(f"🧭 회전 메타데이터 감지: {rotation}°")
+
+        ret, first_frame = cap.read()
+        if not ret:
+            raise RuntimeError("❌ 첫 프레임 읽기 실패")
+
+        first_frame, rotation = detect_and_fix_rotation(first_frame, rotation)
+        height, width = first_frame.shape[:2]
         fps = int(cap.get(cv2.CAP_PROP_FPS))
-        width, height = int(cap.get(3)), int(cap.get(4))
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 다시 처음부터
 
         roi_log = {
             "version": "1.1",
@@ -350,14 +403,9 @@ def process_video(meta: dict):
             "frames": {}
         }
 
-        total_detected_frames = 0
-        total_roi_count = 0
-        total_encrypted = 0
-
-        # ✅ ROI 유지 로직 변수 (홀도버: 탐지 끊김 시 복구 보장)
-        prev_rois = []            # [[x1,y1,x2,y2], ...]
+        total_detected_frames = total_roi_count = total_encrypted = 0
+        prev_rois = []
         hold_counter = 0
-        max_hold_frames = MAX_HOLD_FRAMES
 
         with tqdm(total=frame_count, desc=f"🔄 {filename} 비식별화 진행중", ncols=110) as pbar:
             for idx in range(frame_count):
@@ -365,7 +413,15 @@ def process_video(meta: dict):
                 if not ret:
                     break
 
-                # 1) YOLO 탐지 (conf 상향)
+                # 매 프레임 동일 회전 보정
+                if rotation == 90:
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                elif rotation == 180:
+                    frame = cv2.rotate(frame, cv2.ROTATE_180)
+                elif rotation == 270:
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+                # YOLO 탐지
                 results = model.predict(
                     source=frame,
                     conf=DETECT_CONF,
@@ -385,13 +441,11 @@ def process_video(meta: dict):
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         if x2 <= x1 or y2 <= y1:
                             continue
-                        # 옆모습 커버를 위해 bbox 확장 + 프레임 경계 클리핑
                         x1, y1, x2, y2 = _adjust_bbox(x1, y1, x2, y2, width, height, pad_ratio=EXPAND_RATIO)
                         current_rois.append((x1, y1, x2, y2, conf_score))
 
-                # 2) 감지 끊김 시 홀도버(현재 프레임에도 암호화/기록)
-                source_tag = "yolo"
-                if not current_rois and prev_rois and hold_counter < max_hold_frames:
+                # 홀도버 적용
+                if not current_rois and prev_rois and hold_counter < MAX_HOLD_FRAMES:
                     current_rois = [(x1, y1, x2, y2, MIN_ENCRYPT_CONF) for (x1, y1, x2, y2) in prev_rois]
                     hold_counter += 1
                     source_tag = "holdover"
@@ -400,31 +454,24 @@ def process_video(meta: dict):
                     hold_counter = 0
                     source_tag = "yolo"
 
-                # 3) 암호화/모자이크/로그
                 rois_data = []
                 for (x1, y1, x2, y2, conf_score) in current_rois:
                     roi = frame[y1:y2, x1:x2]
                     rec = {
                         "uuid": str(uuid.uuid4()),
-                        "bbox": [int(x1), int(y1), int(x2), int(y2)],
-                        "key": None,
-                        "iv": None,
-                        "encrypted_roi": None,
+                        "bbox": [x1, y1, x2, y2],
+                        "key": None, "iv": None, "encrypted_roi": None,
                         "restorable": False,
                         "source": source_tag,
-                        "conf": float(conf_score)
+                        "conf": conf_score
                     }
 
                     if roi.size > 0 and conf_score >= MIN_ENCRYPT_CONF:
                         try:
                             key_b64, iv_b64, enc_b64 = _encrypt_roi_png(roi)
-                            rec["key"] = key_b64
-                            rec["iv"] = iv_b64
-                            rec["encrypted_roi"] = enc_b64
-                            rec["restorable"] = True
+                            rec.update({"key": key_b64, "iv": iv_b64, "encrypted_roi": enc_b64, "restorable": True})
                             total_encrypted += 1
                         except Exception as e:
-                            rec["restorable"] = False
                             rec["skip_reason"] = f"encrypt_fail:{str(e)}"
                     else:
                         if roi.size == 0:
@@ -432,7 +479,6 @@ def process_video(meta: dict):
                         elif conf_score < MIN_ENCRYPT_CONF:
                             rec["skip_reason"] = "low_conf"
 
-                    # 모자이크(영상 익명화)
                     try:
                         roi_w, roi_h = x2 - x1, y2 - y1
                         mw = max(1, roi_w // MOSAIC_BLOCK_DIVISOR)
@@ -442,13 +488,11 @@ def process_video(meta: dict):
                             mosaic = cv2.resize(small, (roi_w, roi_h), interpolation=cv2.INTER_NEAREST)
                             frame[y1:y2, x1:x2] = mosaic
                     except Exception as e:
-                        rec.setdefault("skip_reason", "")
-                        rec["skip_reason"] += f"|mosaic_fail:{str(e)}"
+                        rec["skip_reason"] = rec.get("skip_reason", "") + f"|mosaic_fail:{e}"
 
                     rois_data.append(rec)
                     total_roi_count += 1
 
-                # 프레임별 기록 (빈 리스트라도 기록)
                 roi_log["frames"][f"frame_{idx:05d}"] = rois_data
                 if rois_data:
                     total_detected_frames += 1
@@ -460,19 +504,17 @@ def process_video(meta: dict):
         out.release()
         end_time = datetime.utcnow()
 
-        # ✅ 오디오 병합 (원본 오디오 유지) — 결과는 FINAL_VIDEO_DIR에 생성
         output_final_path = merge_audio_with_video(
             original_video=input_path,
             anonymized_video=output_path,
             final_dir=FINAL_VIDEO_DIR
         )
 
-        # ✅ JSON 저장
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(roi_log, f, indent=2, ensure_ascii=False)
 
         print(f"\n✅ 완료: {output_final_path}")
-        print(f"📊 ROI 프레임 {total_detected_frames} / 전체 {frame_count} / ROI {total_roi_count} / 암호화 성공 {total_encrypted}")
+        print(f"📊 ROI 프레임 {total_detected_frames}/{frame_count} / ROI {total_roi_count} / 암호화 {total_encrypted}")
 
         if video_id:
             update_anonymization_status(video_id)
