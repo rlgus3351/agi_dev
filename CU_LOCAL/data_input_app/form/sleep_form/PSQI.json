@@ -10,28 +10,28 @@
           {
             "id": 1,
             "question": "보통 몇시에 잠자리에 듭니까?",
-            "type": "input-number",
+            "type": "input-float",
             "min": 0,
-            "max": 23
+            "max": 24
           },
           {
             "id": 2,
             "question": "보통 잠 들 때까지 평균 얼마나 걸립니까?",
-            "type": "input-number",
+            "type": "input-float",
             "min": 0,
             "max": 120
           },
           {
             "id": 3,
             "question": "보통 몇 시에 일어납니까?",
-            "type": "input-number",
+            "type": "input-float",
             "min": 0,
-            "max": 23
+            "max": 24
           },
           {
             "id": 4,
             "question": "당신은 실제로 하루에 몇 시간 잡니까?",
-            "type": "input-number",
+            "type": "input-float",
             "min": 0,
             "max": 24
           }

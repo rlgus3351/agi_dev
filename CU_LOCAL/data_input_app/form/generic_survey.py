@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Tuple, Optional, Callable
 import tkinter as tk  # ✅ multiline 텍스트용
 from utils.psql import compute_psqi
 from utils.meqk import compute_meqk
-
+import re
 # -------------------------------------------------
 # 텍스트 정규화: 줄바꿈/여러 공백 제거 + trim
 # -------------------------------------------------
@@ -635,7 +635,65 @@ class GenericSurveyForm(ctk.CTkFrame):
                     if v and not v.isdigit():
                         var.set('')
                 var.trace_add("write", _validate)
+            elif qtype == "input-float":
+                # 기본값(사전에서 가져오기), 문자열 Var 사용
+                var = ctk.StringVar(value=str(self._prefill.get((qid, None), "")))
+                self.vars[qid] = var
+                self._score_keys.add(qid)
 
+                # min/max 파싱 (json에서 전달된 경우)
+                try:
+                    min_val_f = float(min_val) if min_val is not None else None
+                except Exception:
+                    min_val_f = None
+                try:
+                    max_val_f = float(max_val) if max_val is not None else None
+                except Exception:
+                    max_val_f = None
+
+                entry = ctk.CTkEntry(table, textvariable=var, width=80)
+                entry.grid(row=row_idx, column=2, padx=5, pady=5, sticky="w")
+                ctk.CTkLabel(table, text=f"(최소: {min_val}, 최대: {max_val})",
+                             font=("", 10), text_color="gray")\
+                    .grid(row=row_idx, column=3, padx=5, pady=5, sticky="w")
+
+                # 이전 유효값을 기억해두고, 유효하면 갱신, 아니면 되돌림
+                prev = var.get()
+
+                # 정규식: 숫자(0-9) 여러개, 선택적 하나의 소수점, 이후 숫자 여러개
+                # 허용 형태: ''(빈), '123', '12.34', '.5' (현재는 '.5'를 허용하지 않음)
+                float_pattern = re.compile(r'^\d*\.?\d*$')
+
+                def _validate(*_):
+                    nonlocal prev
+                    v = var.get()
+                    # 빈값 허용
+                    if v == "":
+                        prev = ""
+                        return
+                    # 패턴 매칭(숫자 + 선택적 하나의 점)
+                    if not float_pattern.match(v):
+                        # 잘못된 입력이면 이전 유효값으로 복구
+                        var.set(prev)
+                        return
+                    # 숫자 변환 시도
+                    try:
+                        fv = float(v)
+                    except ValueError:
+                        var.set(prev)
+                        return
+                    # 범위 검사 (min/max 가 지정되어 있을 때)
+                    if (min_val_f is not None and fv < min_val_f) or (max_val_f is not None and fv > max_val_f):
+                        # 범위 밖이면 이전 유효값으로 복구
+                        var.set(prev)
+                        return
+                    # (선택) 소수 자리 제한을 두고 싶다면 여기에 처리 가능
+                    # 예: precision = 2 -> fv = round(fv, 2); var.set(str(fv))
+                    # 성공하면 prev 갱신
+                    prev = var.get()
+
+                # trace 등록
+                var.trace_add("write", _validate)
             # ---------------- 자유 텍스트(점수 제외) ----------------
             elif qtype == "input-text":
                 placeholder = item.get("placeholder", "텍스트를 입력하세요")
@@ -707,6 +765,7 @@ class GenericSurveyForm(ctk.CTkFrame):
             row_idx += 1
 
     # ---------------- 제출/점수 ----------------
+    
     def _calc_total_and_check(self) -> Optional[int]:
         """
         총점 계산:
@@ -718,33 +777,45 @@ class GenericSurveyForm(ctk.CTkFrame):
         total = 0
 
         for key in self._score_keys:
-            # slider_time
+
+            # ---------------- slider-time ----------------
             if isinstance(key, tuple) and key[0] == "time":
                 qid = key[1]
                 widget = self.vars.get(f"{qid}__timeruler")
                 if widget is None:
                     return None
-                hour_value, _hhmm = widget.get_value()
+                hour_value, _ = widget.get_value()
                 score = self._score_slider_time(qid, float(hour_value))
                 if score is None:
                     return None
                 total += score
                 continue
 
-            # 라디오/숫자
+            # ---------------- radio / input-number / input-float ----------------
             qid = key
             var = self.vars.get(qid)
             if var is None:
                 return None
-            v = var.get()
-            if str(v).strip() == "":
-                return None
-            try:
-                total += int(v)
-            except ValueError:
+
+            v_str = str(var.get()).strip()
+            if v_str == "":
                 return None
 
+            # 🔥 float 처리: 소수 포함 여부 확인
+            if "." in v_str:
+                try:
+                    fval = float(v_str)
+                    total += fval      # 그대로 총점에 더함
+                except ValueError:
+                    return None
+            else:
+                try:
+                    total += int(v_str)
+                except ValueError:
+                    return None
+
         return total
+
 
     def _on_submit(self):
         total = self._calc_total_and_check()
