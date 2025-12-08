@@ -166,7 +166,12 @@ def compute_psqi(answers: Dict[str, Any]) -> PSQIResult:
 
     # ---- 파생지표 ----
     # TIB: 침대에 누워있는 총 시간(자정 넘김 고려)
-    tib = (q3 + 24) - q1
+    # 자는 시간이 20~시 일
+    if(q1>q3):
+        tib = (q3 + 24) - q1    
+    else:
+        tib = q3-q1
+
     vse = (q4 / tib) * 100.0 if tib > 0 else 0.0
 
     # C2: 잠들기까지 지연 분류(분)
