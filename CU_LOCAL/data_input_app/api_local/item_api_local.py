@@ -180,3 +180,25 @@ def mark_item_updated_local(item_id: int) -> bool:
     finally:
         if conn:
             release_connection(conn)
+
+def update_item_description(item_id:int, new_description:str):
+    conn = None
+    try:
+        conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE dev_kkh.tb_items
+                SET description = %s,
+                    updated_at = NOW(),
+                    is_updated = TRUE
+                WHERE item_id = %s;
+            """, (new_description, item_id))
+            conn.commit()
+        print(f"✅ item_id={item_id} description 갱신 완료")
+        return True, None   # ← ok=True, err=None
+    except Exception as e:
+        print(f"❌ item_id={item_id} description 갱신 실패: {e}")
+        return False, str(e)  # ← ok=False, err=에러메시지
+    finally:
+        if conn:
+            release_connection(conn)

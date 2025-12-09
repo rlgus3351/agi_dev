@@ -4,7 +4,7 @@ import json
 from typing import Dict, Any, List, Tuple, Optional, Callable
 import tkinter as tk  # ✅ multiline 텍스트용
 from utils.psql import compute_psqi
-from utils.meqk import compute_meqk
+from utils.meqk import compute_meqk,debug_meqk
 import re
 # -------------------------------------------------
 # 텍스트 정규화: 줄바꿈/여러 공백 제거 + trim
@@ -189,6 +189,7 @@ class GenericSurveyForm(ctk.CTkFrame):
 
         # ✅ 시간 구간 점수 규칙 수집
         self._time_scoring = self._collect_time_scoring()
+        self._range_scoring = self._collect_range_scoring()   # ← 이 줄을 추가
 
         # 스크롤 영역
         scroll_frame = ctk.CTkScrollableFrame(self)
@@ -351,6 +352,19 @@ class GenericSurveyForm(ctk.CTkFrame):
                 except Exception:
                     pass
         return rules
+    def _collect_range_scoring(self) -> dict:
+        """
+        JSON에서 MEQ-K scoring 범주(예: 16-30: 극단적 저녁형)를 추출한다.
+        첫 번째 설문 블록만 대상으로 한다.
+        """
+        try:
+            for survey in self.survey_data.values():
+                scoring = survey.get("scoring")
+                if isinstance(scoring, dict):
+                    return scoring
+        except Exception:
+            pass
+        return {}
 
     @staticmethod
     def _hhmm_to_minutes(hhmm: str) -> int:
@@ -818,7 +832,12 @@ class GenericSurveyForm(ctk.CTkFrame):
 
 
     def _on_submit(self):
-        total = self._calc_total_and_check()
+        title_str = str(self.item_data.get("title","")).upper()
+        if "MEQ" in title_str:
+            # MEQ-K는 여기서 총점을 계산하지 않는다
+            total = 0     # 제출창에서 compute_meqk 결과로 대체됨
+        else:
+            total = self._calc_total_and_check()
         if total is None:
             CTkMessagebox(
                 title="입력 누락",
@@ -972,6 +991,7 @@ class GenericSurveyForm(ctk.CTkFrame):
             return False, "patient_id(=UUID)가 없습니다.", None
 
         desc_with_score = f"{title} 총점 {total_score}점"
+    
         item_id = self.item_data.get("item_id")
         is_psqi = ("PSQI" in str(title).upper()) or ("PSQI" in str(data_type).upper())
         if is_psqi:
@@ -991,20 +1011,19 @@ class GenericSurveyForm(ctk.CTkFrame):
                 print(f"[경고] PSQI 계산 실패: {e}")
 
         is_meqk = ("MEQ" in str(title).upper()) or ("MEQ" in str(self.item_data.get("data_type","")).upper())
+
         if is_meqk:
             try:
                 ans = self._collect_meqk_answers_for_util()
-                result = compute_meqk(ans, time_rules=self._time_scoring, range_scoring=self._range_scoring)
-                total = int(result["total"])
-                bucket = result["bucket"] or {}
-                bucket_label = bucket.get("label") or "범주 없음"
-                bucket_range = bucket.get("range") or "—"
-                desc_with_score = f"MEQ-K 총점 {total}점 — {bucket_label} ({bucket_range})"
+                total = compute_meqk(ans)
+                print(total)
+                result = debug_meqk(ans)
+                total = result["total"]
+                desc_with_score = f"MEQ-K 총점 {total}점"
             except Exception as e:
-                # 계산 실패해도 저장은 계속 진행
                 print(f"[경고] MEQ-K 계산 실패: {e}")
         item_id = self.item_data.get("item_id") 
-
+        print(desc_with_score)
         # 신규: 제출 시 생성
         if item_id is None:
             new_item_id = create_new_item_and_get_id_generic(
@@ -1036,7 +1055,7 @@ class GenericSurveyForm(ctk.CTkFrame):
                 return False, f"추가 답변 저장 실패: {err}", item_id
 
         if _has_update_item_desc:
-            ok, err = update_item_description(item_id, desc_with_score)  # type: ignore
+            ok = update_item_description(item_id, desc_with_score)
             if not ok:
                 return False, f"점수 설명 갱신 실패: {err}", item_id
         else:
@@ -1080,3 +1099,65 @@ class GenericSurveyForm(ctk.CTkFrame):
 
     def _on_close_clicked(self):
         self._close_with_callback()
+
+
+    
+
+    def _collect_meqk_answers_for_util(self):
+    
+        answers = {}
+    
+        MEQK_VALUE_MAP = {
+            3:[4,3,2,1],
+            4:[1,2,3,4],
+            5:[1,2,3,4],
+            6:[1,2,3,4],
+            7:[1,2,3,4],
+            8:[4,3,2,1],
+            9:[4,3,2,1],
+            11:[6,4,2,0],
+            12:[0,2,3,5],
+            13:[4,3,2,1],
+            14:[1,2,3,4],
+            15:[4,3,2,1],
+            16:[1,2,3,4],
+            19:[6,4,2,0]
+        }
+    
+        for key in self._score_keys:
+        
+            # ---------------------------------------
+            # 🔹 (1) 슬라이더 타입 ("time", qid)
+            # ---------------------------------------
+            if isinstance(key, tuple) and key[0] == "time":
+                _, qid = key  # <-- 반드시 이렇게 분리해야 한다!!
+    
+                widget = self.vars.get(f"{qid}__timeruler")
+                if widget:
+                    hour_value, _ = widget.get_value()
+                    answers[str(qid)] = float(hour_value)
+                continue
+            
+            # ---------------------------------------
+            # 🔹 (2) 라디오/정수 타입 (qid = int)
+            # ---------------------------------------
+            qid = key
+            var = self.vars.get(qid)
+            if var is None:
+                continue
+            
+            raw = str(var.get()).strip()
+            if raw == "":
+                continue
+            
+            # 선택 index 기반 값 변환
+            if raw.isdigit():
+                idx = int(raw) - 1
+    
+                if qid in MEQK_VALUE_MAP and 0 <= idx < len(MEQK_VALUE_MAP[qid]):
+                    answers[str(qid)] = MEQK_VALUE_MAP[qid][idx]
+                else:
+                    answers[str(qid)] = int(raw)
+    
+        return answers
+

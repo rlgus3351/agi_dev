@@ -1,75 +1,147 @@
-# utils/meqk.py
-from typing import Dict, List, Tuple, Any
+from typing import Dict, Any
 
-def _hhmm_to_minutes(hhmm: str) -> int:
-    hh, mm = hhmm.split(":")
-    return int(hh) * 60 + int(mm)
+MEQK_REVERSE_MAP = {
+    87: 1,
+    88: 2,
+    89: 3,
+    90: 4,
+    91: 5,
+    92: 6,
+    93: 7,
+    94: 8,
+    95: 9,
+    96: 10,
+    97: 11,
+    98: 12,
+    99: 13,
+    100: 14,
+    101: 15,
+    102: 16,
+    103: 17,
+    104: 18,
+    105: 19,
+}
 
-def _score_time_by_rules(hour_float: float, rules: List[List[Any]]) -> int:
-    """
-    hour_float: 0~24 float 시각 (예: 21.5 = 21:30)
-    rules: [["HH:MM","HH:MM",score], ...]
-    자정 교차 포함 규칙 가능. 구간은 [start, end)로 계산, 마지막 구간은 end 포함 허용.
-    """
-    minutes = int(hour_float) * 60 + int(round((hour_float % 1) * 60))  # 0~1439
-    for idx, (s_str, e_str, score) in enumerate(rules):
-        s = _hhmm_to_minutes(s_str) % 1440
-        e = _hhmm_to_minutes(e_str) % 1440
-        last = (idx == len(rules) - 1)
+Q1_RULE = [
+    (5.00, 6.50, 5),
+    (6.50, 7.75, 4),
+    (7.75, 9.75, 3),
+    (9.75, 11.00, 2),
+    (11.00, 12.00, 1),
+]
 
-        if s == e:  # 전구간
-            return int(score)
+Q2_RULE = [
+    (20.00, 21.00, 5),
+    (21.00, 22.25, 4),
+    (22.25, 24.50, 3),
+    (24.50, 25.75, 2),
+    (25.75, 27.00, 1),
+]
 
-        if s < e:
-            inside = (s <= minutes < e) or (last and minutes == e)
-        else:
-            # 자정 교차 (예: 21:00 ~ 03:00)
-            inside = (minutes >= s or minutes < e) or (last and minutes == e)
+Q10_RULE = Q2_RULE
 
-        if inside:
-            return int(score)
-    # 매칭 실패 시 0점
+Q17_RULE = [
+    (0.00, 4.00, 1),
+    (4.00, 8.00, 5),
+    (8.00, 9.00, 4),
+    (9.00, 14.00, 3),
+    (14.00, 17.00, 2),
+    (17.00, 24.00, 1),
+]
+
+Q18_RULE = [
+    (0.00, 5.00, 1),
+    (5.00, 8.00, 5),
+    (8.00, 10.00, 4),
+    (10.00, 17.00, 3),
+    (17.00, 22.00, 2),
+    (22.00, 24.00, 1),
+]
+
+
+def score_from_ranges(val: float, rules, wrap_midnight=True):
+    v = val
+    if wrap_midnight and v < 4:
+        v += 24
+    for s, e, sc in rules:
+        if s <= v < e:
+            return sc
     return 0
 
-def compute_meqk(
-    answers: Dict[str, float],
-    time_rules: Dict[str, List[List[Any]]],
-    range_scoring: Dict[str, str],
-) -> Dict[str, Any]:
-    """
-    answers: { "1": 7.5, "2": 23.0, "3": 4, ... }  # slider-time은 float-hour(0~24), radio는 정수 점수
-    time_rules: { "1": [["05:00","06:30",5], ...], "2": [...], ... }
-    range_scoring: { "16-30":"극단적 저녁형", ... }
 
-    return: { "total": int, "bucket": {"range":"59-69","label":"보통 아침형"} }
+def compute_meqk(answers: Dict[str, Any]) -> int:
+    """
+    answers: {"1": 11.0, "3": 4, ...}
+    - 슬라이더(Q1,2,10,17,18) → 규칙으로 점수 계산
+    - 나머지(Q3~Q16,19) → 이미 점수로 들어온 값 그대로 합산
     """
     total = 0
 
-    # 1) 시간형 문항 점수 반영
-    for qid, rules in time_rules.items():
-        q = str(qid)
-        if q in answers:
-            total += _score_time_by_rules(float(answers[q]), rules)
+    for q, raw in answers.items():
+        original_qid = int(q)
+        qid = MEQK_REVERSE_MAP.get(original_qid, original_qid)
+        v = float(raw)
 
-    # 2) 나머지(라디오/수치형)는 그대로 더함
-    for q, v in answers.items():
-        if q not in time_rules:
-            try:
-                total += int(v)
-            except Exception:
-                total += 0
+        # 슬라이더 5개
+        if qid == 1:
+            total += score_from_ranges(v, Q1_RULE)
+            continue
+        if qid == 2:
+            total += score_from_ranges(v, Q2_RULE)
+            continue
+        if qid == 10:
+            total += score_from_ranges(v, Q10_RULE)
+            continue
+        if qid == 17:
+            total += score_from_ranges(v, Q17_RULE, wrap_midnight=False)
+            continue
+        if qid == 18:
+            total += score_from_ranges(v, Q18_RULE, wrap_midnight=False)
+            continue
 
-    # 3) 총점 → 범주 매핑
-    bucket = {"range": None, "label": None}
-    for rng, label in range_scoring.items():
-        if "-" in rng:
-            lo, hi = rng.split("-", 1)
-            try:
-                loi, hii = int(lo), int(hi)
-            except Exception:
-                continue
-            if loi <= total <= hii:
-                bucket = {"range": rng, "label": label}
-                break
+        # 나머지는 이미 점수로 변환된 상태 → 그대로 더함
+        total += int(v)
 
-    return {"total": total, "bucket": bucket}
+    return total
+
+
+def debug_meqk(answers: Dict[str, Any]) -> Dict[str, Any]:
+    results = {}
+    total = 0
+
+    for q, raw in answers.items():
+        original_qid = int(q)
+        qid = MEQK_REVERSE_MAP.get(original_qid, original_qid)
+        v = float(raw)
+
+        if qid == 1:
+            score = score_from_ranges(v, Q1_RULE)
+            results[qid] = {"value": v, "type": "slider(Q1)", "score": score}
+            total += score
+            continue
+        if qid == 2:
+            score = score_from_ranges(v, Q2_RULE)
+            results[qid] = {"value": v, "type": "slider(Q2)", "score": score}
+            total += score
+            continue
+        if qid == 10:
+            score = score_from_ranges(v, Q10_RULE)
+            results[qid] = {"value": v, "type": "slider(Q10)", "score": score}
+            total += score
+            continue
+        if qid == 17:
+            score = score_from_ranges(v, Q17_RULE, wrap_midnight=False)
+            results[qid] = {"value": v, "type": "slider(Q17)", "score": score}
+            total += score
+            continue
+        if qid == 18:
+            score = score_from_ranges(v, Q18_RULE, wrap_midnight=False)
+            results[qid] = {"value": v, "type": "slider(Q18)", "score": score}
+            total += score
+            continue
+
+        score = int(v)
+        results[qid] = {"value": score, "type": "direct", "score": score}
+        total += score
+
+    return {"detail": results, "total": total}
