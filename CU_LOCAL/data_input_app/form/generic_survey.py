@@ -1016,8 +1016,9 @@ class GenericSurveyForm(ctk.CTkFrame):
             try:
                 ans = self._collect_meqk_answers_for_util()
                 total = compute_meqk(ans)
-                print(total)
+                
                 result = debug_meqk(ans)
+                print(result)
                 total = result["total"]
                 desc_with_score = f"MEQ-K 총점 {total}점"
             except Exception as e:
