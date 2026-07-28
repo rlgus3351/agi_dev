@@ -1034,7 +1034,7 @@ class GenericSurveyForm(ctk.CTkFrame):
                 seq=seq,
                 description=desc_with_score,
             )
-            if not isinstance(new_item_id, int):
+            if not isinstance(new_item_id, int): 
                 return False, "tb_items 생성 실패", None
 
             if inserts:
