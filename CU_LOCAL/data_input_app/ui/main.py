@@ -389,7 +389,7 @@ for i, (h, w) in enumerate(zip(headers, widths)):
     lbl = ctk.CTkLabel(header_frame, text=h, font=("", 13, "bold"), width=w, anchor="w")
     lbl.grid(row=0, column=i, padx=5, pady=5, sticky="w")
 
-table_frame = ctk.CTkFrame(frame_patient)
+table_frame = ctk.CTkScrollableFrame(frame_patient)
 table_frame.pack(fill="both", expand=True)
 
 

@@ -35,8 +35,8 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 FINAL_VIDEO_DIR = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
 
-VIDEO_PATH = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\video"
-JSON_PATH  = r"C:\Users\user\Desktop\DEV_AGI\parkinson\output\json"
+VIDEO_PATH = r"C:\Users\user\Desktop\DEV_AGI\parkinson\result\video"
+JSON_PATH  = r"C:\Users\user\Desktop\DEV_AGI\parkinson\result\json"
 
 if device == "cuda":
     try:
@@ -58,10 +58,10 @@ print(f"✅ YOLO 모델 로드 완료 (device={device})")
 # ----------------------------------------
 # 🔧 탐지/암호화 튜닝 파라미터
 # ----------------------------------------
-DETECT_CONF = 0.35            # YOLO 탐지 최소 신뢰도(상향)
-MIN_ENCRYPT_CONF = 0.30       # JSON에 복구용 ROI로 담는 최소 신뢰도
+DETECT_CONF = 0.25            # YOLO 탐지 최소 신뢰도(상향)
+MIN_ENCRYPT_CONF = 0.20       # JSON에 복구용 ROI로 담는 최소 신뢰도
 IOU = 0.5                     # NMS IOU
-EXPAND_RATIO = 0.20           # bbox 확장(옆얼굴 커버)
+EXPAND_RATIO = 0.30           # bbox 확장(옆얼굴 커버)
 MAX_HOLD_FRAMES = 3           # 탐지 끊김 시 이전 bbox 유지 프레임 수
 MOSAIC_BLOCK_DIVISOR = 20     # 모자이크 블록 크기(값↑ = 블록↑)
 
@@ -153,6 +153,45 @@ def merge_audio_with_video(original_video: str, anonymized_video: str, final_dir
 
     print(f"🎵 오디오 포함 영상 생성 완료 → {out_path}")
     return out_path
+def get_rotation_angle(path: str) -> int:
+    """ffprobe로 회전 메타데이터 읽기 (0, 90, 180, 270 반환)"""
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream_tags=rotate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            path
+        ]
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        val = r.stdout.strip()
+        if val:
+            return int(val)
+    except Exception:
+        pass
+    return 0  # 기본값 (회전 없음)
+
+def detect_and_fix_rotation(frame, rotation_meta):
+    """
+    영상의 회전 상태를 감지하고,
+    실제로 시계 방향으로 90도 돌아간 영상이면 반시계 방향으로 90도 회전시켜서 정방향으로 맞춤.
+    """
+    h, w = frame.shape[:2]
+
+    # 메타데이터가 없고, 가로형인데 실제로 오른쪽으로 누운 경우 → 반시계 90° 회전
+    if rotation_meta == 0 and w > h:
+        print("🧭 영상이 시계 방향으로 90° 돌아간 것으로 판단됨 → 반시계 방향으로 90° 보정")
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        rotation_meta = 270  # 보정된 상태로 표시
+
+    elif rotation_meta == 90:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    elif rotation_meta == 180:
+        frame = cv2.rotate(frame, cv2.ROTATE_180)
+    elif rotation_meta == 270:
+        frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+    return frame, rotation_meta
 
 # ----------------------------------------
 # ✅ 상태 업데이트 API
@@ -246,14 +285,15 @@ def process_video(meta: dict):
     print(f"[DEBUG] raw_path: {raw_path}")
     print(f"[DEBUG] normalized to container path: {input_path}")
     filename = os.path.basename(input_path)
+    print(f"[DEBUG] normalized to container filename: {filename}")
     filename_wo_ext = os.path.splitext(filename)[0]
     video_id = meta.get("video_metadata_id")
     item_id = meta.get("item_id")
 
-    os.makedirs("data/output", exist_ok=True)
-    os.makedirs("data/json", exist_ok=True)
+    os.makedirs(VIDEO_PATH, exist_ok=True)
+    os.makedirs(JSON_PATH, exist_ok=True)
 
-    output_path = f"data/output/{filename_wo_ext}_anonymized.mp4"
+    output_path = f"{VIDEO_PATH}/{filename}_anonymized.mp4"
     display_id, seq = get_display_id_from_item(item_id) if item_id else (None, None)
 
     if display_id and seq:
@@ -263,19 +303,39 @@ def process_video(meta: dict):
     else:
         json_filename = f"{filename_wo_ext}_rois.json"
 
-    json_path = f"data/json/{json_filename}"
+    json_path = f"{JSON_PATH}/{json_filename}"
     start_time = datetime.utcnow()
 
     try:
+        rotation = get_rotation_angle(input_path)
+        print(f"🧭 영상 회전 메타데이터 감지: {rotation}°")
+
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
             raise RuntimeError(f"❌ 비디오를 열 수 없습니다: {input_path}")
 
         fps = int(cap.get(cv2.CAP_PROP_FPS))
-        width, height = int(cap.get(3)), int(cap.get(4))
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        ret, frame = cap.read()
+        if not ret:
+            raise RuntimeError("❌ 첫 프레임 읽기 실패")
+
+        # 자동 회전 보정 추가
+        frame, rotation = detect_and_fix_rotation(frame, rotation)
+
+        height, width = frame.shape[:2]
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+        if rotation == 90:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        elif rotation == 180:
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        elif rotation == 270:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+       
 
         roi_log = {
             "version": "1.1",
@@ -303,6 +363,13 @@ def process_video(meta: dict):
                 ret, frame = cap.read()
                 if not ret:
                     break
+                # 회전 보정 (영상 방향 고정)
+                if rotation == 90:
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+                elif rotation == 180:
+                    frame = cv2.rotate(frame, cv2.ROTATE_180)
+                elif rotation == 270:
+                    frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
                 # 1) YOLO 탐지 (conf 상향)
                 results = model.predict(
@@ -310,6 +377,7 @@ def process_video(meta: dict):
                     conf=DETECT_CONF,
                     iou=IOU,
                     device=device,
+                    imgsz=960,
                     verbose=False
                 )
 

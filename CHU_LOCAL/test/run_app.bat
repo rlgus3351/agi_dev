@@ -10,7 +10,7 @@ REM ✅ Move to current directory
 cd /d "%~dp0"
 
 REM ✅ Check virtual environment
-if not exist venv (
+if not exist venv_gpu (
     echo ❌ Virtual environment not found.
     echo ▶ Please run "setup_env.bat" first.
     pause
@@ -18,7 +18,7 @@ if not exist venv (
 )
 
 REM ✅ Activate virtual environment
-call venv\Scripts\activate
+call venv_gpu\Scripts\activate
 
 REM ✅ Run main.py
 if exist main.py (

@@ -89,7 +89,8 @@ def run_validation_pipeline():
                     json_obj, err = build_mds_updrs_part3_json(item_id)
                     if json_obj:
                     # 필요하면 파일로도 저장
-                        out_path = f"./json/{patient_id}_mds_updrs_part3.json"
+                        JSON_PATH  = r"C:\Users\user\Desktop\DEV_AGI\parkinson\result\survey"
+                        out_path = f"{JSON_PATH}/{patient_id}_mds_updrs_part3.json"
                         save_json_to_file(json_obj, out_path)
                         print(f"📝 설문 JSON 저장: {out_path}")
                     else:
